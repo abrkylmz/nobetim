@@ -9,7 +9,7 @@ import {
 
 let apps: Awaited<ReturnType<typeof makeApp>>[] = [];
 const app = async (ai = mockAi()) => { const a = await makeApp(ai); apps.push(a); return a; };
-afterEach(() => { apps.forEach((a) => a.cleanup()); apps = []; });
+afterEach(async () => { await Promise.all(apps.map((a) => a.cleanup())); apps = []; });
 
 const novExcel = () => excelBuffer({ Kasım: rosterGrid([{ name: "Ayşe Yılmaz", days: AYSE }, { name: "Fatma Demir", days: FATMA }]) });
 
@@ -246,7 +246,7 @@ describe("Güvenlik ve gizlilik", () => {
     const agent = await signedIn(a);
     const { detail } = await uploadAndWait(a, agent, [{ name: "l.xlsx", buffer: novExcel() }]);
     await post(agent, `/api/imports/${detail.id}/confirm`).expect(200);
-    const rows = (await a.db.execute("SELECT * FROM imports")).rows;
+    const rows = (await a.db.query("SELECT * FROM imports")).rows;
     expect(JSON.stringify(rows)).not.toContain("Fatma");
     // Saklanan dosya şifreli
     const files = fs.readdirSync(path.join(a.dataDir, "uploads"));

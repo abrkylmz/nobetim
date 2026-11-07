@@ -1,88 +1,73 @@
-// Veritabanı: libSQL (Turso). Yerelde ve testlerde "file:" adresiyle SQLite dosyası,
-// Vercel'de Turso bulut veritabanı kullanılır. Tüm sorgular asenkrondur.
+// Veritabanı: Postgres. Vercel'de Neon, yerelde ve testlerde PGlite.
+// Tüm sorgular asenkrondur; "?" yer tutucuları sql.ts içinde $n'e çevrilir.
 
-import { createClient, type Client, type InArgs, type Row as LibRow } from "@libsql/client";
 import { randomUUID } from "node:crypto";
 import type {
   Candidate, DraftEntry, ImportDetail, ImportStatus, ImportSummary, Profile, Quality, Shift, ShiftCategory, ShiftType, SourceKind,
 } from "../shared/types.js";
 import { CATEGORY_META } from "../shared/types.js";
+import { addDays } from "../shared/time.js";
 import type { Legend } from "./parsing/types.js";
 import type { PersonRecord } from "./parsing/pipeline.js";
+import { connectPglite, connectPostgres, type Database, type Exec, type Row } from "./sql.js";
 
-/** İstemci ya da açık bir işlem (transaction): ikisi de `execute` sağlar. */
-export type Exec = Pick<Client, "execute">;
-export type DB = Client;
+export type { Exec };
+export type DB = Database;
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, pass_hash TEXT NOT NULL, created_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS sessions (
-    token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL)`,
+    token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at BIGINT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS sessions_user ON sessions(user_id)`,
   `CREATE TABLE IF NOT EXISTS profiles (
     user_id TEXT PRIMARY KEY, full_name TEXT NOT NULL, hospital TEXT NOT NULL DEFAULT '', department TEXT NOT NULL DEFAULT '',
-    staff_no TEXT NOT NULL DEFAULT '', weekly_hours REAL NOT NULL DEFAULT 40, overtime_rate REAL NOT NULL DEFAULT 0, holiday_rate REAL NOT NULL DEFAULT 0)`,
+    staff_no TEXT NOT NULL DEFAULT '', weekly_hours DOUBLE PRECISION NOT NULL DEFAULT 40,
+    overtime_rate DOUBLE PRECISION NOT NULL DEFAULT 0, holiday_rate DOUBLE PRECISION NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS shift_types (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, code TEXT NOT NULL, label TEXT NOT NULL, category TEXT NOT NULL,
-    start TEXT, end TEXT, color TEXT NOT NULL, verified INTEGER NOT NULL DEFAULT 0, sort INTEGER NOT NULL DEFAULT 0)`,
+    start_time TEXT, end_time TEXT, color TEXT NOT NULL, verified INTEGER NOT NULL DEFAULT 0, sort INTEGER NOT NULL DEFAULT 0)`,
   `CREATE INDEX IF NOT EXISTS shift_types_user ON shift_types(user_id)`,
   `CREATE TABLE IF NOT EXISTS imports (
-    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, file_name TEXT NOT NULL, file_hash TEXT NOT NULL, size INTEGER NOT NULL,
-    stored_files TEXT, file_expires_at INTEGER, status TEXT NOT NULL, source TEXT, progress TEXT, error TEXT,
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, file_name TEXT NOT NULL, file_hash TEXT NOT NULL, size BIGINT NOT NULL,
+    stored_files TEXT, file_expires_at BIGINT, status TEXT NOT NULL, source TEXT, progress TEXT, error TEXT,
     created_at TEXT NOT NULL, analyzed_at TEXT, confirmed_at TEXT, period_year INTEGER, period_month INTEGER,
     period_guessed INTEGER NOT NULL DEFAULT 0, person_json TEXT, candidates_json TEXT, match_note TEXT, quality_json TEXT,
     notes_json TEXT, legend_json TEXT, draft_json TEXT, shift_count INTEGER NOT NULL DEFAULT 0, duplicate_of TEXT,
-    processing_started_at INTEGER)`,
+    processing_started_at BIGINT)`,
   `CREATE INDEX IF NOT EXISTS imports_user ON imports(user_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS shifts (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, import_id TEXT, date TEXT NOT NULL, start_at TEXT, end_at TEXT,
-    code TEXT NOT NULL, label TEXT NOT NULL, category TEXT NOT NULL, hours REAL NOT NULL DEFAULT 0, is_extra INTEGER NOT NULL DEFAULT 0,
-    department TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', source TEXT NOT NULL, created_at TEXT NOT NULL)`,
+    code TEXT NOT NULL, label TEXT NOT NULL, category TEXT NOT NULL, hours DOUBLE PRECISION NOT NULL DEFAULT 0,
+    is_extra INTEGER NOT NULL DEFAULT 0, department TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL, created_at TEXT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS shifts_user_date ON shifts(user_id, date)`,
-  `CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, n INTEGER NOT NULL, reset INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, n INTEGER NOT NULL, reset BIGINT NOT NULL)`,
 ];
 
-// Önceki sürümlerden kalan veritabanları için sütun eklemeleri (varsa hata yok sayılır)
-const MIGRATIONS = [
-  "ALTER TABLE imports ADD COLUMN processing_started_at INTEGER",
-];
-
-export async function openDb(url: string, authToken?: string): Promise<DB> {
-  const db = createClient({ url, authToken });
-  if (url.startsWith("file:")) await db.execute("PRAGMA busy_timeout = 5000");
-  await db.batch(SCHEMA, "write");
-  for (const m of MIGRATIONS) {
-    try { await db.execute(m); } catch { /* sütun zaten var */ }
-  }
+/**
+ * Bağlantı adresine göre sürücü seçer:
+ *  - postgres:// veya postgresql:// → Neon/Postgres
+ *  - pglite:<klasör> → diske kalıcı PGlite (yerel geliştirme)
+ *  - memory: → bellek içi PGlite (testler)
+ */
+export async function openDb(url: string): Promise<DB> {
+  const db = /^postgres(ql)?:\/\//i.test(url) ? await connectPostgres(url)
+    : url.startsWith("pglite:") ? await connectPglite(url.slice("pglite:".length))
+    : url === "memory:" ? await connectPglite()
+    : (() => { throw new Error(`Desteklenmeyen veritabanı adresi: ${url.split(":")[0]}:`); })();
+  // Aynı anda açılan birden çok sunucu örneği şemayı birbirine karışmadan kursun
+  await db.tx(async (t) => {
+    if (db.kind === "postgres") await t.query("SELECT pg_advisory_xact_lock(4711)");
+    for (const s of SCHEMA) await t.query(s);
+  });
   return db;
 }
 
-/** Bir işlem içinde çalıştırır; hata olursa geri alır. */
-export async function tx<T>(db: DB, fn: (t: Exec) => Promise<T>): Promise<T> {
-  const t = await db.transaction("write");
-  try {
-    const r = await fn(t);
-    await t.commit();
-    return r;
-  } catch (e) {
-    await t.rollback().catch(() => {});
-    throw e;
-  } finally {
-    t.close();
-  }
-}
-
-type Row = Record<string, unknown>;
-export async function all(e: Exec, sql: string, args: InArgs = []): Promise<Row[]> {
-  return (await e.execute({ sql, args })).rows as unknown as Row[];
-}
-export async function one(e: Exec, sql: string, args: InArgs = []): Promise<Row | undefined> {
-  return (await all(e, sql, args))[0];
-}
-export async function run(e: Exec, sql: string, args: InArgs = []): Promise<number> {
-  return (await e.execute({ sql, args })).rowsAffected;
-}
+export const tx = <T>(db: DB, fn: (t: Exec) => Promise<T>) => db.tx(fn);
+export const all = async (e: Exec, sql: string, args: unknown[] = []) => (await e.query(sql, args)).rows;
+export const one = async (e: Exec, sql: string, args: unknown[] = []): Promise<Row | undefined> => (await all(e, sql, args))[0];
+export const run = async (e: Exec, sql: string, args: unknown[] = []) => (await e.query(sql, args)).rowCount;
 
 const json = <T>(v: unknown, fallback: T): T => (typeof v === "string" && v ? (JSON.parse(v) as T) : fallback);
 const nowIso = () => new Date().toISOString();
@@ -93,9 +78,9 @@ const num = (v: unknown) => (v == null ? null : Number(v));
 export async function hit(e: Exec, key: string, windowMs: number): Promise<{ n: number; reset: number }> {
   const now = Date.now();
   const r = await one(e, `INSERT INTO rate_limits (key, n, reset) VALUES (?, 1, ?)
-    ON CONFLICT(key) DO UPDATE SET
+    ON CONFLICT (key) DO UPDATE SET
       n = CASE WHEN rate_limits.reset < ? THEN 1 ELSE rate_limits.n + 1 END,
-      reset = CASE WHEN rate_limits.reset < ? THEN excluded.reset ELSE rate_limits.reset END
+      reset = CASE WHEN rate_limits.reset < ? THEN EXCLUDED.reset ELSE rate_limits.reset END
     RETURNING n, reset`, [key, now + windowMs, now, now]);
   return { n: Number(r!.n), reset: Number(r!.reset) };
 }
@@ -114,8 +99,8 @@ export async function getProfile(e: Exec, userId: string): Promise<Profile | nul
 export async function saveProfile(e: Exec, userId: string, p: Profile) {
   await run(e, `INSERT INTO profiles (user_id, full_name, hospital, department, staff_no, weekly_hours, overtime_rate, holiday_rate)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET full_name = excluded.full_name, hospital = excluded.hospital, department = excluded.department,
-      staff_no = excluded.staff_no, weekly_hours = excluded.weekly_hours, overtime_rate = excluded.overtime_rate, holiday_rate = excluded.holiday_rate`,
+    ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, hospital = EXCLUDED.hospital, department = EXCLUDED.department,
+      staff_no = EXCLUDED.staff_no, weekly_hours = EXCLUDED.weekly_hours, overtime_rate = EXCLUDED.overtime_rate, holiday_rate = EXCLUDED.holiday_rate`,
   [userId, p.fullName, p.hospital, p.department, p.staffNo, p.weeklyHours, p.overtimeRate, p.holidayRate]);
 }
 
@@ -138,7 +123,7 @@ export const DEFAULT_SHIFT_TYPES: Omit<ShiftType, "id" | "verified">[] = [
 
 const toShiftType = (r: Row): ShiftType => ({
   id: r.id as string, code: r.code as string, label: r.label as string, category: r.category as ShiftCategory,
-  start: (r.start as string) ?? null, end: (r.end as string) ?? null, color: r.color as string, verified: !!Number(r.verified),
+  start: (r.start_time as string) ?? null, end: (r.end_time as string) ?? null, color: r.color as string, verified: !!Number(r.verified),
 });
 
 export async function listShiftTypes(e: Exec, userId: string): Promise<ShiftType[]> {
@@ -150,11 +135,11 @@ export async function replaceShiftTypes(db: DB, userId: string, types: Omit<Shif
   const work = async (t: Exec) => {
     await run(t, "DELETE FROM shift_types WHERE user_id = ?", [userId]);
     for (const [i, s] of types.entries()) {
-      await run(t, "INSERT INTO shift_types (id, user_id, code, label, category, start, end, color, verified, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      await run(t, "INSERT INTO shift_types (id, user_id, code, label, category, start_time, end_time, color, verified, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [randomUUID(), userId, s.code, s.label, s.category, s.start, s.end, s.color, s.verified ? 1 : 0, i]);
     }
   };
-  if (inTx) await work(inTx); else await tx(db, work);
+  if (inTx) await work(inTx); else await db.tx(work);
 }
 
 export const seedShiftTypes = (db: DB, userId: string) =>
@@ -176,9 +161,10 @@ const toShift = (r: Row, types: ShiftType[]): Shift => {
 export async function listShifts(e: Exec, userId: string, from: string, to: string, excludeImport?: string): Promise<Shift[]> {
   const types = await listShiftTypes(e, userId);
   // Önceki günden sarkan gece nöbetlerini de kapsamak için bir gün geriden başla
-  const rows = await all(e, `SELECT * FROM shifts WHERE user_id = ? AND date >= date(?, '-1 day') AND date <= ?
-    AND (? IS NULL OR import_id IS NULL OR import_id != ?) ORDER BY date, start_at`,
-  [userId, from, to, excludeImport ?? null, excludeImport ?? null]);
+  const args: unknown[] = [userId, addDays(from, -1), to];
+  let extra = "";
+  if (excludeImport) { extra = " AND (import_id IS NULL OR import_id <> ?)"; args.push(excludeImport); }
+  const rows = await all(e, `SELECT * FROM shifts WHERE user_id = ? AND date >= ? AND date <= ?${extra} ORDER BY date, start_at`, args);
   return rows.map((r) => toShift(r, types));
 }
 
@@ -263,7 +249,7 @@ export async function listImports(e: Exec, userId: string): Promise<ImportSummar
 }
 
 export async function findImportByHash(e: Exec, userId: string, hash: string): Promise<ImportSummary | null> {
-  const r = await one(e, "SELECT * FROM imports WHERE user_id = ? AND file_hash = ? AND status != 'discarded' ORDER BY created_at DESC LIMIT 1", [userId, hash]);
+  const r = await one(e, "SELECT * FROM imports WHERE user_id = ? AND file_hash = ? AND status <> 'discarded' ORDER BY created_at DESC LIMIT 1", [userId, hash]);
   return r ? toImport(r) : null;
 }
 
@@ -283,21 +269,17 @@ export async function updateImport(e: Exec, id: string, patch: Record<string, un
     const v = patch[k];
     if (JSON_COLS.has(k)) return v == null ? null : JSON.stringify(v);
     if (typeof v === "boolean") return v ? 1 : 0;
-    return (v ?? null) as string | number | null;
+    return v ?? null;
   });
   await run(e, `UPDATE imports SET ${keys.map((k) => `${COLS[k]} = ?`).join(", ")} WHERE id = ?`, [...values, id]);
 }
 
-/** Kullanıcının tüm verisini siler (yabancı anahtar zincirine güvenmeden). */
+/** Kullanıcının tüm verisini tek işlemde siler. */
 export async function deleteUserData(db: DB, userId: string) {
-  await db.batch([
-    { sql: "DELETE FROM shifts WHERE user_id = ?", args: [userId] },
-    { sql: "DELETE FROM imports WHERE user_id = ?", args: [userId] },
-    { sql: "DELETE FROM shift_types WHERE user_id = ?", args: [userId] },
-    { sql: "DELETE FROM profiles WHERE user_id = ?", args: [userId] },
-    { sql: "DELETE FROM sessions WHERE user_id = ?", args: [userId] },
-    { sql: "DELETE FROM users WHERE id = ?", args: [userId] },
-  ], "write");
+  await db.tx(async (t) => {
+    for (const table of ["shifts", "imports", "shift_types", "profiles", "sessions"]) {
+      await run(t, `DELETE FROM ${table} WHERE user_id = ?`, [userId]);
+    }
+    await run(t, "DELETE FROM users WHERE id = ?", [userId]);
+  });
 }
-
-export type { LibRow };

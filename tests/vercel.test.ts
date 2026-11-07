@@ -44,10 +44,9 @@ describe("Vercel yapılandırması", () => {
   afterEach(() => { process.env = { ...saved }; });
 
   it("Vercel'de eksik ortam değişkenlerini açıkça bildirir", () => {
-    process.env = { ...saved, VERCEL: "1", TURSO_DATABASE_URL: "", FILE_ENCRYPTION_KEY: "", BLOB_READ_WRITE_TOKEN: "" };
-    delete process.env.TURSO_DATABASE_URL;
+    process.env = { VERCEL: "1" };
     expect(() => configFromEnv()).toThrow(ConfigError);
-    process.env.TURSO_DATABASE_URL = "libsql://x.turso.io";
+    process.env.DATABASE_URL = "postgresql://u:p@ep-x-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require";
     expect(() => configFromEnv()).toThrow(/FILE_ENCRYPTION_KEY/);
     process.env.FILE_ENCRYPTION_KEY = randomBytes(32).toString("hex");
     expect(() => configFromEnv()).toThrow(/BLOB_READ_WRITE_TOKEN/);
@@ -60,18 +59,17 @@ describe("Vercel yapılandırması", () => {
 });
 
 describe("Marketplace değişken adları", () => {
-  it("ön ekli Turso ve Blob değişkenlerini bulur", async () => {
+  it("ön ekli Neon ve Blob değişkenlerini bulur", async () => {
     const { findDatabaseEnv, findBlobToken } = await import("../server/config");
     const env = {
-      NOBETIM_TURSO_DATABASE_URL: "libsql://nobetim-abrkylmz.aws-eu-west-1.turso.io",
-      NOBETIM_TURSO_AUTH_TOKEN: "tok-1",
-      DATABASE_URL: "postgres://baska-bir-veritabani",
+      NOBETIM_DATABASE_URL: "postgresql://u:p@ep-x-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require",
       STORE_READ_WRITE_TOKEN: "vercel_blob_rw_abc",
+      LEGACY_DATABASE_URL: "libsql://eski.turso.io",
     };
-    expect(findDatabaseEnv(env)).toMatchObject({ url: env.NOBETIM_TURSO_DATABASE_URL, authToken: "tok-1" });
+    expect(findDatabaseEnv(env)).toMatchObject({ url: env.NOBETIM_DATABASE_URL });
     expect(findBlobToken(env)).toBe("vercel_blob_rw_abc");
-    expect(findDatabaseEnv({ DATABASE_URL: "postgres://x" })).toBeUndefined();
-    expect(findDatabaseEnv({ TURSO_DATABASE_URL: "libsql://a.turso.io", TURSO_AUTH_TOKEN: "t" })).toMatchObject({ authToken: "t" });
+    expect(findDatabaseEnv({ DATABASE_URL: "libsql://x.turso.io" })).toBeUndefined();
+    expect(findDatabaseEnv({ POSTGRES_URL: "postgres://a/b" })).toMatchObject({ urlKey: "POSTGRES_URL" });
   });
 });
 
@@ -84,19 +82,19 @@ describe("Cron temizlik uç noktası", () => {
       const ok = await request(a.app).get("/api/cron/cleanup").set("Authorization", "Bearer s3cret-value");
       expect(ok.status).toBe(200);
       expect(ok.body).toHaveProperty("removedFiles");
-    } finally { a.cleanup(); }
+    } finally { await a.cleanup(); }
   });
 
   it("uzun süre 'analiz ediliyor' kalan kayıtları başarısız işaretler", async () => {
     const a = await makeApp();
     try {
-      await a.db.execute({ sql: `INSERT INTO imports (id, user_id, file_name, file_hash, size, status, created_at, processing_started_at)
-        VALUES ('x', 'u', 'a.pdf', 'h', 1, 'processing', '2026-01-01', ?)`, args: [Date.now() - 11 * 60_000] });
-      await a.db.execute({ sql: `INSERT INTO imports (id, user_id, file_name, file_hash, size, status, created_at, processing_started_at)
-        VALUES ('y', 'u', 'b.pdf', 'h', 1, 'processing', '2026-01-01', ?)`, args: [Date.now()] });
+      await a.db.query(`INSERT INTO imports (id, user_id, file_name, file_hash, size, status, created_at, processing_started_at)
+        VALUES ('x', 'u', 'a.pdf', 'h', 1, 'processing', '2026-01-01', ?)`, [Date.now() - 11 * 60_000]);
+      await a.db.query(`INSERT INTO imports (id, user_id, file_name, file_hash, size, status, created_at, processing_started_at)
+        VALUES ('y', 'u', 'b.pdf', 'h', 1, 'processing', '2026-01-01', ?)`, [Date.now()]);
       await a.imports.expireStale();
-      const rows = (await a.db.execute("SELECT id, status FROM imports ORDER BY id")).rows;
+      const rows = (await a.db.query("SELECT id, status FROM imports ORDER BY id")).rows;
       expect(rows.map((r) => r.status)).toEqual(["failed", "processing"]);
-    } finally { a.cleanup(); }
+    } finally { await a.cleanup(); }
   });
 });

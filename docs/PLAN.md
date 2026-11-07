@@ -9,7 +9,7 @@ karşılanamaz. Dil (TypeScript) ve araç (Vite) korunur; şu eklemeler yapılı
 | Katman | Seçim | Gerekçe |
 |---|---|---|
 | Sunucu | Node 24 + Express 5 + TypeScript (tsx) | Analiz sunucuda; API anahtarı tarayıcıya hiç inmez |
-| Veritabanı | `node:sqlite` (Node'a gömülü) | Kurulum/derleme gerektirmez, tek dosya |
+| Veritabanı | Postgres: Vercel'de Neon, yerelde PGlite | Vercel Storage ile birinci sınıf entegrasyon; testler gerçek Postgres motorunda koşar |
 | Arayüz | React 19 + Vite + lucide-react + Inter | Çok ekranlı, düzenlenebilir formlar için bileşen yapısı |
 | Excel | SheetJS (resmî dağıtım, 0.20.x) | Tüm sayfalar, birleştirilmiş hücreler, tarih hücreleri |
 | PDF metni | pdfjs-dist (konum bilgili metin) | Tablo satır/sütunlarını koordinattan yeniden kurmak için |

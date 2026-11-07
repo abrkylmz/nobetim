@@ -12,7 +12,7 @@ export const onVercel = () => !!process.env.VERCEL;
 type Env = Record<string, string | undefined>;
 
 /**
- * Vercel Marketplace entegrasyonları değişkenleri ön ekle ekleyebilir (ör. NOBETIM_TURSO_DATABASE_URL).
+ * Vercel Marketplace entegrasyonları değişkenleri ön ekle ekleyebilir (ör. NOBETIM_DATABASE_URL).
  * Önce bilinen adlara, sonra bu adlarla biten anahtarlara, en son değerin biçimine bakılır.
  */
 function findEnv(env: Env, names: string[], suffixes: string[], valueTest: RegExp): { key: string; value: string } | undefined {
@@ -26,18 +26,13 @@ function findEnv(env: Env, names: string[], suffixes: string[], valueTest: RegEx
   return k ? { key: k, value: env[k]! } : undefined;
 }
 
+/** Neon/Postgres bağlantı adresi. Neon entegrasyonu DATABASE_URL (havuzlu) ve POSTGRES_URL ekler. */
 export function findDatabaseEnv(env: Env) {
   const url = findEnv(env,
-    ["TURSO_DATABASE_URL", "TURSO_URL", "TURSO_CONNECTION_URL", "LIBSQL_URL", "DATABASE_URL"],
-    ["_TURSO_DATABASE_URL", "_DATABASE_URL", "_TURSO_URL", "_LIBSQL_URL"],
-    /^(libsql|https?|wss?):\/\/\S+\.turso\.io|^libsql:\/\//i);
-  if (!url) return undefined;
-  // Token, adresle aynı ön eki taşıyan anahtardan alınır
-  const prefix = url.key.replace(/(TURSO_)?(DATABASE_|CONNECTION_|LIBSQL_)?URL$/i, "");
-  const tokenKeys = [`${prefix}TURSO_AUTH_TOKEN`, `${prefix}AUTH_TOKEN`, `${prefix}DATABASE_AUTH_TOKEN`, `${prefix}TOKEN`,
-    "TURSO_AUTH_TOKEN", "TURSO_TOKEN", "LIBSQL_AUTH_TOKEN", "DATABASE_AUTH_TOKEN"];
-  const tokenKey = tokenKeys.find((k) => env[k]) ?? Object.keys(env).find((k) => /TURSO/i.test(k) && /TOKEN$/i.test(k) && env[k]);
-  return { url: url.value, urlKey: url.key, authToken: tokenKey ? env[tokenKey] : undefined, tokenKey };
+    ["DATABASE_URL", "POSTGRES_URL", "NEON_DATABASE_URL", "DATABASE_URL_UNPOOLED", "POSTGRES_URL_NON_POOLING"],
+    ["_DATABASE_URL", "_POSTGRES_URL", "_DATABASE_URL_UNPOOLED"],
+    /^postgres(ql)?:\/\//i);
+  return url ? { url: url.value, urlKey: url.key } : undefined;
 }
 
 export function findBlobToken(env: Env) {
@@ -47,7 +42,7 @@ export function findBlobToken(env: Env) {
 
 /** Teşhis için yalnızca ilgili değişkenlerin ADLARI (değerleri asla) günlüğe yazılır. */
 function logEnvNames(env: Env) {
-  const names = Object.keys(env).filter((k) => /TURSO|LIBSQL|DATABASE|BLOB|STORAGE|ENCRYPTION|CRON/i.test(k)).sort();
+  const names = Object.keys(env).filter((k) => /DATABASE|POSTGRES|^PG|NEON|BLOB|STORAGE|ENCRYPTION|CRON/i.test(k)).sort();
   console.error(`Tanımlı ilgili ortam değişkeni adları: ${names.length ? names.join(", ") : "(hiçbiri)"}`);
 }
 
@@ -57,10 +52,11 @@ export function configFromEnv(): AppOptions {
   const dataDir = path.resolve(env.DATA_DIR ?? "data");
 
   const found = findDatabaseEnv(env);
-  const dbUrl = found?.url ?? (vercel ? "" : `file:${path.join(dataDir, "nobetim.db").replace(/\\/g, "/")}`);
+  // Yerelde Neon adresi verilmezse veriler data/pg altında PGlite ile tutulur
+  const dbUrl = found?.url ?? (vercel ? "" : `pglite:${path.join(dataDir, "pg")}`);
   if (!dbUrl) {
     logEnvNames(env);
-    throw new ConfigError("Veritabanı adresi bulunamadı (TURSO_DATABASE_URL). Turso'nun bu projeye bağlı olduğunu kontrol edip yeniden yayınlayın.");
+    throw new ConfigError("Veritabanı adresi bulunamadı (DATABASE_URL). Neon veritabanının bu projeye bağlı olduğunu kontrol edip yeniden yayınlayın.");
   }
 
   let key: Buffer;
@@ -76,7 +72,6 @@ export function configFromEnv(): AppOptions {
 
   return {
     dbUrl,
-    dbAuthToken: found?.authToken,
     files,
     ai: createClaudeExtractor(env.ANTHROPIC_API_KEY ?? ""),
     retentionDays: Number(env.FILE_RETENTION_DAYS ?? 30),

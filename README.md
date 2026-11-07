@@ -10,7 +10,7 @@ Uygulama Vercel için hazırdır: arayüz statik olarak CDN'den, API tek bir Ver
 
 | Parça | Vercel'de | Yerelde |
 |---|---|---|
-| Veritabanı | Turso (libSQL) | `data/nobetim.db` dosyası |
+| Veritabanı | Neon (Postgres) | PGlite: gömülü Postgres, `data/pg/` |
 | Yüklenen dosyalar | Vercel Blob, **private**, AES-256-GCM şifreli | `data/uploads/` (şifreli) |
 | Arka plan analizi | `waitUntil`, en fazla 300 sn | aynı süreç |
 | Saklama süresi temizliği | Vercel Cron (her gün 03:00 UTC) | saatlik zamanlayıcı |
@@ -18,8 +18,8 @@ Uygulama Vercel için hazırdır: arayüz statik olarak CDN'den, API tek bir Ver
 
 ### Adımlar
 
-1. **Projeyi içe aktar:** Kodu GitHub'a gönder, Vercel'de *Add New → Project* ile seç. `vercel.json` tüm ayarları içerir (Framework: Other, build `npm run build`, çıktı `web/dist`, bölge `dub1` (İrlanda)).
-2. **Veritabanı:** Projede *Storage → Marketplace → Turso* entegrasyonunu ekle. Bölge olarak **EU West (Ireland) – dub1** seç (Vercel fonksiyonu da bu bölgede çalışır). Entegrasyon `TURSO_DATABASE_URL` ve `TURSO_AUTH_TOKEN` değişkenlerini ekler. Tablolar ilk istekte otomatik oluşturulur.
+1. **Projeyi içe aktar:** Kodu GitHub'a gönder, Vercel'de *Add New → Project* ile seç. `vercel.json` tüm ayarları içerir (Framework: Other, build `npm run build`, çıktı `web/dist`, bölge `fra1` (Frankfurt)).
+2. **Veritabanı:** Projede *Storage → Create Database → Neon* seç. Bölge olarak **AWS Europe Central 1 (Frankfurt)** seç; Vercel fonksiyonu da Frankfurt'ta (`fra1`) çalışır. Entegrasyon `DATABASE_URL` (havuzlu bağlantı) ve ilgili değişkenleri ekler. Tablolar ilk istekte otomatik oluşturulur.
 3. **Dosya deposu:** *Storage → Create → Blob* ile bir depo oluşturup projeye bağla (`BLOB_READ_WRITE_TOKEN` eklenir).
 4. **Diğer ortam değişkenleri** (*Settings → Environment Variables*):
    - `FILE_ENCRYPTION_KEY`: Üretmek için `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. **Bir kez belirle, değiştirme.** Değişirse önceden yüklenmiş dosyalar okunamaz.
@@ -40,7 +40,7 @@ npm run dev               # arayüz http://localhost:5173, API 8787
 npm run build && npm start   # http://localhost:8787
 ```
 
-Yerelde Turso/Blob değişkenleri verilmezse veriler `data/` klasöründe tutulur.
+Yerelde `DATABASE_URL` verilmezse veritabanı `data/pg/` altında PGlite (uygulama içinde çalışan Postgres) ile, Blob anahtarı verilmezse dosyalar `data/uploads/` altında tutulur. Ayrı bir Postgres kurmaya gerek yoktur.
 
 ## Özellikler
 
@@ -61,7 +61,8 @@ Yerelde Turso/Blob değişkenleri verilmezse veriler `data/` klasöründe tutulu
 api/index.ts                  Vercel Function: Express uygulamasını sarar (soğuk başlangıçta bir kez kurulur)
 server/config.ts              Ortam değişkenleri → ayarlar (Vercel / yerel)
 server/app.ts                 Express API
-server/db.ts                  libSQL (Turso) erişimi, şema ve göçler
+server/db.ts                  Postgres sorguları ve şema
+server/sql.ts                 Sürücü katmanı: Neon için pg, yerel/test için PGlite
 server/fileStore.ts           Şifreli dosya deposu: Vercel Blob (private) veya yerel disk
 server/importService.ts       Arka planda analiz, düzenleme, kişi seçimi, onay, temizlik
 server/parsing/               ExcelParser, PdfParser, ImageParser, AiExtractor, TableAnalyzer,
@@ -81,12 +82,12 @@ tests/                        Birim + API + Vercel testleri, tarayıcı duman te
 - Dosyalar şifreli ve özel (private) Blob'da, rastgele adla saklanır; **30 gün** sonra (ya da kullanıcı silince) silinir.
 - Diğer personelin nöbetleri çıkarılmaz/saklanmaz; kişi seçimi için okunan isim listesi onaydan sonra silinir.
 - Fotoğraf ve taranmış PDF'ler yalnızca OCR için Anthropic API'ye gönderilir; anahtar yalnızca sunucuda tutulur.
-- Fonksiyon ve veritabanı İrlanda’da (AB) çalışır. Kişisel veri işlendiği için yayına almadan önce KVKK aydınlatma metni ve açık rıza ihtiyacını değerlendirin.
+- Fonksiyon ve veritabanı Frankfurt'ta (AB) çalışır. Kişisel veri işlendiği için yayına almadan önce KVKK aydınlatma metni ve açık rıza ihtiyacını değerlendirin.
 
 ## Testler
 
 ```bash
-npm test                      # 48 birim + API + Vercel testi
+npm test                      # 49 birim + API + Vercel testi (bellek içi Postgres ile)
 npm start & npm run test:e2e  # gerçek tarayıcıda (Chrome/Edge) temel akış + ekran görüntüleri
 npx tsx tests/e2e/vercel-handler.ts 8788   # Vercel fonksiyonunu yerelde çalıştırır (duman testi bu adrese yönlendirilebilir)
 ```

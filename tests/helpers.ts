@@ -135,15 +135,14 @@ export async function okPhoto(): Promise<Buffer> {
 export async function makeApp(ai: AiExtractor = mockAi(), extra: Partial<AppOptions> = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "nobetim-test-"));
   const ctx = await createApp({
-    dbUrl: `file:${path.join(dataDir, "test.db").replace(/\\/g, "/")}`,
+    dbUrl: "memory:", // her test için ayrı, bellek içi Postgres (PGlite)
     files: createLocalFileStore(path.join(dataDir, "uploads"), randomBytes(32)),
     ai, retentionDays: 30, ...extra,
   });
   return {
     ...ctx, dataDir,
-    cleanup() {
-      ctx.close();
-      // Windows libSQL dosya tutamacını geç bırakabilir; geçici klasör silinemezse sorun değil
+    async cleanup() {
+      await ctx.close();
       try { fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); } catch { /* yok say */ }
     },
   };

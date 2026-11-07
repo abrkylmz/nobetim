@@ -243,11 +243,11 @@ export function createImportService({ db, files, ai, retentionDays, defer }: Imp
     async remove(userId: string, id: string, deleteShifts: boolean) {
       const imp = await requireImport(userId, id);
       if (imp.status === "processing") throw new ServiceError(409, "Analiz sürerken silinemez.");
-      await db.batch([
-        ...(deleteShifts ? [{ sql: "DELETE FROM shifts WHERE user_id = ? AND import_id = ?", args: [userId, id] }] : []),
-        { sql: "UPDATE shifts SET import_id = NULL WHERE user_id = ? AND import_id = ?", args: [userId, id] },
-        { sql: "DELETE FROM imports WHERE id = ? AND user_id = ?", args: [id, userId] },
-      ], "write");
+      await db.tx(async (t) => {
+        if (deleteShifts) await run(t, "DELETE FROM shifts WHERE user_id = ? AND import_id = ?", [userId, id]);
+        await run(t, "UPDATE shifts SET import_id = NULL WHERE user_id = ? AND import_id = ?", [userId, id]);
+        await run(t, "DELETE FROM imports WHERE id = ? AND user_id = ?", [id, userId]);
+      });
       for (const f of imp.storedFiles ?? []) await files.remove(f.path);
     },
 

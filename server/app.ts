@@ -19,8 +19,8 @@ import { FileRejected, isImageKind, MAX_IMAGES_PER_IMPORT, validateFile } from "
 import { monthStats } from "./stats.js";
 
 export interface AppOptions {
+  /** postgres://… (Neon), pglite:<klasör> (yerel) veya memory: (testler) */
   dbUrl: string;
-  dbAuthToken?: string;
   files: FileStore;
   ai: AiExtractor;
   retentionDays?: number;
@@ -58,8 +58,8 @@ function safeEqual(a: string, b: string) {
 }
 
 export async function createApp(opts: AppOptions) {
-  if (opts.dbUrl.startsWith("file:")) fs.mkdirSync(path.dirname(opts.dbUrl.slice(5)), { recursive: true });
-  const db: DB = await openDb(opts.dbUrl, opts.dbAuthToken);
+  if (opts.dbUrl.startsWith("pglite:")) fs.mkdirSync(opts.dbUrl.slice("pglite:".length), { recursive: true });
+  const db: DB = await openDb(opts.dbUrl);
   const files = opts.files;
   const maxUpload = opts.maxUploadBytes ?? 15 * 1024 * 1024;
   const imports = createImportService({ db, files, ai: opts.ai, retentionDays: opts.retentionDays ?? 30, defer: opts.defer });
@@ -379,7 +379,7 @@ export async function createApp(opts: AppOptions) {
 
   return {
     app, db, imports,
-    close() { if (timer) clearInterval(timer); db.close(); },
+    close() { if (timer) clearInterval(timer); return db.close(); },
   };
 }
 
