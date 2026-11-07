@@ -94,7 +94,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .navlink .count { margin-left: auto; background: var(--accent); color: var(--accent-ink); border-radius: 99px; font-size: 11px; font-weight: 700; padding: 1px 7px; }
 .sidebar .spacer { flex: 1; }
 .main { flex: 1; min-width: 0; }
-.page { max-width: 1120px; margin: 0 auto; padding: 28px 28px 60px; animation: pageIn .35s ease both; }
+.page { max-width: 1120px; margin: 0 auto; padding: 28px 28px 60px; animation: pageIn .35s ease backwards; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
 .page-head p { margin-top: 4px; }
 .topbar { display: none; }
@@ -250,7 +250,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .dropzone.over { border-color: var(--primary); background: var(--secondary); transform: scale(1.01); }
 .dropzone .ic { width: 72px; height: 72px; margin: 0 auto 14px; border-radius: 24px; display: grid; place-items: center; background: var(--secondary); color: var(--secondary-ink); }
 .formats { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
-.file-row { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); animation: pageIn .25s ease both; }
+.file-row { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); animation: pageIn .25s ease backwards; }
 .file-row .thumb { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; background: var(--surface-2); display: grid; place-items: center; flex-shrink: 0; color: var(--primary); }
 .progress { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
 .progress > div { height: 100%; background: var(--primary); transition: width .2s; }
@@ -285,7 +285,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .entry {
   display: grid; grid-template-columns: 58px 1fr auto; gap: 14px; align-items: start; padding: 14px;
   border: 1px solid var(--line); border-radius: 16px; background: var(--surface); transition: border-color .15s, box-shadow .15s, opacity .2s;
-  animation: pageIn .25s ease both;
+  animation: pageIn .25s ease backwards;
 }
 .entry.status-error { border-color: color-mix(in srgb, var(--err) 45%, var(--line)); box-shadow: inset 4px 0 0 var(--err); }
 .entry.status-check { border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); box-shadow: inset 4px 0 0 var(--warn); }

@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, Info, Loader2, X, XCircle } from "lucide-react";
 import { CATEGORY_META, type Confidence, type FieldScore, type ShiftCategory } from "../../../shared/types";
 
@@ -35,14 +36,16 @@ export function Modal({ title, onClose, children, footer }: { title: ReactNode; 
     document.body.style.overflow = "hidden";
     return () => { document.removeEventListener("keydown", on); document.body.style.overflow = ""; };
   }, [onClose]);
-  return (
+  // Belgenin köküne yerleştirilir: sayfadaki animasyon/transform pencerenin ekran konumunu bozmasın
+  return createPortal(
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
         <div className="modal-head"><h2>{title}</h2><button className="iconbtn" onClick={onClose} aria-label="Kapat"><X size={20} /></button></div>
         {children}
         {footer && <div className="row" style={{ justifyContent: "flex-end", marginTop: 20 }}>{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -96,6 +96,10 @@ try {
   await clickText("Onayla ve takvime ekle");
   await waitText("Takvime ekle");
   await shot("07-onay-penceresi");
+  // Uzun listede onay penceresi ekranın görünen alanında olmalı (sayfa animasyonu konumu bozmasın)
+  const modalBox = await page.evaluate(() => { const r = document.querySelector(".modal").getBoundingClientRect(); return { top: r.top, bottom: r.bottom, vh: innerHeight }; });
+  if (modalBox.top < 0 || modalBox.bottom > modalBox.vh) throw new Error(`Onay penceresi ekran dışında: ${JSON.stringify(modalBox)}`);
+  step("onay penceresi ekranda görünüyor");
   await page.evaluate(() => [...document.querySelectorAll(".modal button")].find((b) => b.textContent.trim() === "Onayla").click());
   await waitText("Bu ay", 20000);
   await page.waitForSelector(".cal .pill");
