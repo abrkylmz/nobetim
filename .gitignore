@@ -1,0 +1,8 @@
+node_modules/
+data/
+web/dist/
+e2e-shots/
+.env
+.env*.local
+.vercel/
+*.log
