@@ -93,16 +93,75 @@ export function findLegend(grid: Grid): Legend[] {
   return [...out.values()];
 }
 
+/** Izgarayı üreten kaynağın (Excel) ek bilgisi: birleştirilmiş hücrelerin devamı mı? */
+export interface GridMeta {
+  /** dir "h": yatay birleştirmenin devamı (aynı satır), "v": dikey birleştirmenin alt satırı */
+  isContinuation?(r: number, c: number, dir?: "h" | "v"): boolean;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
 /**
- * Nöbet hücresinin metni. Excel "16/08" veya "08/08" yazısını tarihe (16 Ağustos) çevirmişse,
- * hücrenin biçimine göre yeniden "16/08" yapılır; bu kodlar saat aralığı olarak okunur.
+ * Nöbet hücresinin metni; Excel'in kendiliğinden yaptığı dönüşümleri geri alır:
+ *  - "16/08" → 16 Ağustos tarihi → yeniden "16/08" (hücre biçimindeki gün/ay sırasıyla)
+ *  - "08-16" → Ağustos 2016 (ay-yıl) → "08/16"
+ *  - "16,08" → ondalık sayı → "16/08"
  */
-function shiftCellText(v: GridValue): string {
+export function shiftCellText(v: GridValue): string {
+  return readShiftCell(v).text;
+}
+
+/** converted: Excel'in dönüştürdüğü bir değer geri kuruldu; bu bir yorum olduğu için kullanıcı kontrol etmeli. */
+export function readShiftCell(v: GridValue): { text: string; converted?: "date" | "decimal" } {
   if (v instanceof Date && !isNaN(v.getTime()) && v.getUTCFullYear() > 1901) {
-    const d = String(v.getUTCDate()).padStart(2, "0"), m = String(v.getUTCMonth() + 1).padStart(2, "0");
-    return (v as Date & { dayFirst?: boolean }).dayFirst === false ? `${m}/${d}` : `${d}/${m}`;
+    const d = pad2(v.getUTCDate()), m = pad2(v.getUTCMonth() + 1), y = pad2(v.getUTCFullYear() % 100);
+    const order = (v as Date & { excelOrder?: string }).excelOrder;
+    return { text: order === "md" ? `${m}/${d}` : order === "my" ? `${m}/${y}` : `${d}/${m}`, converted: "date" };
   }
-  return cellText(v);
+  const text = cellText(v);
+  const dec = /^(\d{1,2})[.,](\d{2})$/.exec(text);
+  if (dec && +dec[1] <= 24 && +dec[2] <= 24) return { text: `${pad2(+dec[1])}/${dec[2]}`, converted: "decimal" };
+  return { text };
+}
+
+interface DayColumns {
+  start: number;
+  firstDay: number;
+  date?: { y: number; m: number };
+  /** Her gün bir veya daha fazla sütundan oluşabilir (birleştirilmiş gün başlığı / alt sütunlar) */
+  days: { day: number; cols: number[] }[];
+}
+
+/**
+ * Başlık satırında ardışık gün sütunlarını bulur. Bir gün başlığı birden çok sütunu kapsıyorsa
+ * (birleştirilmiş "1" hücresinin altında iki alt sütun gibi) bu sütunlar aynı güne bağlanır.
+ */
+function dayColumns(row: GridValue[], r: number, meta: GridMeta): DayColumns {
+  const isCont = (c: number) => !!meta.isContinuation?.(r, c, "h");
+  const blank = (c: number) => row[c] == null || cellText(row[c]) === "";
+  let best: DayColumns = { start: -1, firstDay: 0, days: [] };
+  for (let c = 0; c < row.length; c++) {
+    if (isCont(c)) continue;
+    const h = dayHead(row[c]);
+    if (!h) continue;
+    const days = [{ day: h.day, cols: [c] }];
+    for (let k = c + 1; k < row.length; k++) {
+      const last = days[days.length - 1];
+      if (isCont(k) || blank(k)) { last.cols.push(k); continue; }
+      const n = dayHead(row[k]);
+      if (n && n.day === last.day + 1) days.push({ day: n.day, cols: [k] });
+      else break;
+    }
+    if (days.length > best.days.length) best = { start: c, firstDay: h.day, date: h.date, days };
+  }
+  // Son günün arkasındaki boş başlık hücreleri (tablonun sağ tarafı) güne eklenmesin
+  if (best.days.length > 1) {
+    const widths = best.days.slice(0, -1).map((d) => d.cols.length).sort((a, b) => a - b);
+    const typical = widths[Math.floor(widths.length / 2)];
+    const last = best.days[best.days.length - 1];
+    last.cols = last.cols.slice(0, typical);
+  }
+  return best;
 }
 
 function pickColumn(heads: string[], re: RegExp): number {
@@ -129,11 +188,11 @@ function addRow(map: Map<string, RosterRow>, row: Omit<RosterRow, "key" | "cells
 
 // ---------- Yerleşim A: kişiler satırlarda ----------
 
-function analyzeRows(grid: Grid, rowsOut: Map<string, RosterRow>): { found: boolean; date?: { y: number; m: number } } {
-  const headers: { r: number; run: Run }[] = [];
+function analyzeRows(grid: Grid, rowsOut: Map<string, RosterRow>, meta: GridMeta): { found: boolean; date?: { y: number; m: number } } {
+  const headers: { r: number; run: DayColumns }[] = [];
   grid.forEach((row, r) => {
-    const run = longestRun(row ?? []);
-    if (run.len >= 7) headers.push({ r, run });
+    const run = dayColumns(row ?? [], r, meta);
+    if (run.days.length >= 7) headers.push({ r, run });
   });
   if (!headers.length) return { found: false };
 
@@ -146,7 +205,8 @@ function analyzeRows(grid: Grid, rowsOut: Map<string, RosterRow>): { found: bool
       const above = r > 0 ? foldWords(cellText(grid[r - 1]?.[c])) : "";
       return here || above;
     });
-    const body = grid.slice(r + 1, end);
+    const bodyStart = r + 1;
+    const body = grid.slice(bodyStart, end);
 
     let nameCol = pickColumn(metaHeads, NAME_HEAD);
     if (nameCol < 0) {
@@ -163,21 +223,31 @@ function analyzeRows(grid: Grid, rowsOut: Map<string, RosterRow>): { found: bool
     const titleCol = pickColumn(metaHeads, TITLE_HEAD);
     const deptCol = pickColumn(metaHeads, DEPT_HEAD);
 
-    for (const row of body) {
-      if (!row) continue;
+    body.forEach((row, bi) => {
+      if (!row) return;
       // Gün adlarının yazdığı ikinci başlık satırını atla
-      const dayCells = row.slice(run.start, run.start + run.len).map((v) => foldWords(cellText(v)));
-      if (dayCells.filter((d) => WEEKDAY_WORDS.test(d)).length >= 3) continue;
+      const dayCells = run.days.map((d) => foldWords(cellText(row[d.cols[0]])));
+      if (dayCells.filter((d) => WEEKDAY_WORDS.test(d)).length >= 3) return;
+
+      // İsim hücresi üst satırdan birleştirilerek gelmişse bu satır aynı kişinin ikinci satırıdır
+      // (ör. üstte kodlar, altta saatler). Ayrı kişi ya da ek nöbet sayılmaz.
+      if (meta.isContinuation?.(bodyStart + bi, nameCol, "v")) return;
 
       const name = cellText(row[nameCol]);
-      if (!hasLetters(name) || SKIP_NAME.test(foldWords(name)) || /[:=]/.test(name)) continue;
+      if (!hasLetters(name) || SKIP_NAME.test(foldWords(name)) || /[:=]/.test(name)) return;
 
       const cells: RosterCell[] = [];
-      for (let i = 0; i < run.len; i++) {
-        const raw = shiftCellText(row[run.start + i]);
-        if (raw) cells.push({ day: run.firstDay + i, raw, readScore: 1 });
+      for (const d of run.days) {
+        const read = d.cols.map((c) => readShiftCell(row[c])).filter((x) => x.text);
+        const parts = [...new Set(read.map((x) => x.text))];
+        if (!parts.length) continue;
+        const conv = read.find((x) => x.converted);
+        cells.push(conv
+          ? { day: d.day, raw: parts.join(" + "), readScore: 0.75,
+              note: `Excel bu hücreyi ${conv.converted === "date" ? "tarihe" : "ondalık sayıya"} çevirmişti; "${conv.text}" olarak yorumlandı` }
+          : { day: d.day, raw: parts.join(" + "), readScore: 1 });
       }
-      if (!cells.length) continue;
+      if (!cells.length) return;
       addRow(rowsOut, {
         name,
         staffNo: staffCol >= 0 ? cellText(row[staffCol]) || undefined : undefined,
@@ -185,7 +255,7 @@ function analyzeRows(grid: Grid, rowsOut: Map<string, RosterRow>): { found: bool
         department: deptCol >= 0 ? cellText(row[deptCol]) || undefined : undefined,
         cells,
       });
-    }
+    });
   });
   return { found: rowsOut.size > 0, date };
 }
@@ -230,10 +300,10 @@ function analyzeDates(grid: Grid, rowsOut: Map<string, RosterRow>): { found: boo
   return { found: rowsOut.size > 0, date: best.date };
 }
 
-export function analyzeGrid(grid: Grid): TableResult {
+export function analyzeGrid(grid: Grid, meta: GridMeta = {}): TableResult {
   const rows = new Map<string, RosterRow>();
   let layout: TableResult["layout"] = null;
-  let res = analyzeRows(grid, rows);
+  let res = analyzeRows(grid, rows, meta);
   if (res.found) layout = "rows";
   else {
     res = analyzeDates(grid, rows);

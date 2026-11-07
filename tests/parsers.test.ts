@@ -86,6 +86,86 @@ describe("ExcelParser (senaryo 4, 5)", () => {
     expect(r.rows.map((x) => x.name)).toEqual(["Ayşe Yılmaz"]);
   });
 
+  describe("kayma ve Excel dönüşümlerine karşı", () => {
+    const head = (extra: unknown[] = []) => ["Adı Soyadı", ...extra, ...Array.from({ length: 30 }, (_, i) => i + 1)];
+    const book = (ws: XLSX.WorkSheet, more?: (wb: XLSX.WorkBook) => void) => {
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Liste");
+      more?.(wb);
+      return XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellStyles: true }) as Buffer;
+    };
+    const cellsOf = (buf: Buffer, name = "Ayşe Yılmaz") =>
+      Object.fromEntries(parseExcel(buf).rows.find((r) => r.name === name)!.cells.map((c) => [c.day, c.raw]));
+
+    it("gizli sütun ve satırları atlar (günler kaymaz)", () => {
+      const ws = XLSX.utils.aoa_to_sheet([
+        ["KASIM 2026"],
+        head(["gizli"]),
+        ["Ayşe Yılmaz", "x", "G", "N", "", "İ"],
+        ["Eski Personel", "x", "G", "G", "G", "G"],
+      ]);
+      ws["!cols"] = [{}, { hidden: true }];
+      ws["!rows"] = [{}, {}, {}, { hidden: true }];
+      const r = parseExcel(book(ws));
+      expect(r.rows.map((x) => x.name)).toEqual(["Ayşe Yılmaz"]);
+      expect(cellsOf(book(ws))).toEqual({ 1: "G", 2: "N", 4: "İ" });
+    });
+
+    it("iki satırlı personelde alt satırı (saatler) ayrı kişi ya da nöbet saymaz", () => {
+      const ws = XLSX.utils.aoa_to_sheet([
+        ["KASIM 2026"],
+        head(),
+        ["Ayşe Yılmaz", "16/08", "08/16", "", "08/08"],
+        ["", 16, 8, "", 24],
+        ["Fatma Demir", "08/16"],
+        ["", 8],
+      ]);
+      ws["!merges"] = [{ s: { r: 2, c: 0 }, e: { r: 3, c: 0 } }, { s: { r: 4, c: 0 }, e: { r: 5, c: 0 } }];
+      const buf = book(ws);
+      expect(parseExcel(buf).rows.map((x) => x.name)).toEqual(["Ayşe Yılmaz", "Fatma Demir"]);
+      expect(cellsOf(buf)).toEqual({ 1: "16/08", 2: "08/16", 4: "08/08" });
+    });
+
+    it("iki alt sütunu kapsayan gün başlıklarını tek gün olarak okur", () => {
+      const header: unknown[] = ["Adı Soyadı"];
+      const merges: XLSX.Range[] = [];
+      for (let d = 1; d <= 30; d++) {
+        header.push(d, "");
+        merges.push({ s: { r: 1, c: 2 * d - 1 }, e: { r: 1, c: 2 * d } });
+      }
+      const row: unknown[] = ["Ayşe Yılmaz", "G", "", "", "N", "08/08", ""];
+      const ws = XLSX.utils.aoa_to_sheet([["KASIM 2026"], header, row]);
+      ws["!merges"] = merges;
+      expect(cellsOf(book(ws))).toEqual({ 1: "G", 2: "N", 3: "08/08" });
+    });
+
+    it("Excel'in sayıya/tarihe çevirdiği kodları geri kazanır", () => {
+      const ws = XLSX.utils.aoa_to_sheet([["KASIM 2026"], head(), ["Ayşe Yılmaz", "G"]]);
+      const at = (day: number) => XLSX.utils.encode_cell({ r: 2, c: day });
+      ws[at(2)] = { t: "n", v: 16.08, z: "0.00" };            // "16,08" ondalık
+      ws[at(3)] = { t: "n", v: 8.16, z: "0.00" };             // "8,16"
+      ws[at(4)] = { t: "n", v: 42583, z: "mmm-yy" };          // "08-16" → Ağustos 2016
+      ws[at(5)] = { t: "n", v: 46250, z: "m/d" };             // ABD biçimi: "8/16" → 16 Ağustos
+      ws[at(6)] = { t: "n", v: 7.5, z: "0.0" };               // gerçek ondalık (7,5) saat sanılmaz
+      ws["!ref"] = "A1:AE3";
+      const c = cellsOf(book(ws));
+      expect(c).toMatchObject({ 1: "G", 2: "16/08", 3: "08/16", 4: "08/16", 5: "08/16" });
+      expect(c[6]).not.toMatch(/\//);
+    });
+
+    it("gizli çalışma sayfalarını okumaz", () => {
+      const ws = XLSX.utils.aoa_to_sheet([["KASIM 2026"], head(), ["Ayşe Yılmaz", "G"]]);
+      const old = XLSX.utils.aoa_to_sheet([["EKİM 2026"], head(), ["Ayşe Yılmaz", "N", "N"]]);
+      const buf = book(ws, (wb) => {
+        XLSX.utils.book_append_sheet(wb, old, "Eski");
+        wb.Workbook = { Sheets: [{ name: "Liste", Hidden: 0 }, { name: "Eski", Hidden: 1 }] };
+      });
+      const r = parseExcel(buf);
+      expect(r.sheetCount).toBe(1);
+      expect(cellsOf(buf)).toEqual({ 1: "G" });
+    });
+  });
+
   it("tarihler satırda, isimler hücrede olan günlük listeyi okur", () => {
     const grid: unknown[][] = [["KASIM 2026 NÖBET LİSTESİ"], ["Tarih", "Gün", "08:00-16:00", "16:00-08:00"]];
     for (let d = 1; d <= 30; d++) grid.push([`${String(d).padStart(2, "0")}.11.2026`, "", d % 2 ? "Ayşe Yılmaz, Fatma Demir" : "Zeynep Kaya", d % 3 ? "" : "Ayşe Yılmaz"]);
