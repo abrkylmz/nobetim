@@ -18,8 +18,8 @@ Uygulama Vercel için hazırdır: arayüz statik olarak CDN'den, API tek bir Ver
 
 ### Adımlar
 
-1. **Projeyi içe aktar:** Kodu GitHub'a gönder, Vercel'de *Add New → Project* ile seç. `vercel.json` tüm ayarları içerir (Framework: Other, build `npm run build`, çıktı `web/dist`, bölge `fra1`).
-2. **Veritabanı:** Projede *Storage → Marketplace → Turso* entegrasyonunu ekle. Bölge olarak **Frankfurt (aws-eu-central-1)** seç. Entegrasyon `TURSO_DATABASE_URL` ve `TURSO_AUTH_TOKEN` değişkenlerini ekler. Tablolar ilk istekte otomatik oluşturulur.
+1. **Projeyi içe aktar:** Kodu GitHub'a gönder, Vercel'de *Add New → Project* ile seç. `vercel.json` tüm ayarları içerir (Framework: Other, build `npm run build`, çıktı `web/dist`, bölge `dub1` (İrlanda)).
+2. **Veritabanı:** Projede *Storage → Marketplace → Turso* entegrasyonunu ekle. Bölge olarak **EU West (Ireland) – dub1** seç (Vercel fonksiyonu da bu bölgede çalışır). Entegrasyon `TURSO_DATABASE_URL` ve `TURSO_AUTH_TOKEN` değişkenlerini ekler. Tablolar ilk istekte otomatik oluşturulur.
 3. **Dosya deposu:** *Storage → Create → Blob* ile bir depo oluşturup projeye bağla (`BLOB_READ_WRITE_TOKEN` eklenir).
 4. **Diğer ortam değişkenleri** (*Settings → Environment Variables*):
    - `FILE_ENCRYPTION_KEY`: Üretmek için `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. **Bir kez belirle, değiştirme.** Değişirse önceden yüklenmiş dosyalar okunamaz.
@@ -81,7 +81,7 @@ tests/                        Birim + API + Vercel testleri, tarayıcı duman te
 - Dosyalar şifreli ve özel (private) Blob'da, rastgele adla saklanır; **30 gün** sonra (ya da kullanıcı silince) silinir.
 - Diğer personelin nöbetleri çıkarılmaz/saklanmaz; kişi seçimi için okunan isim listesi onaydan sonra silinir.
 - Fotoğraf ve taranmış PDF'ler yalnızca OCR için Anthropic API'ye gönderilir; anahtar yalnızca sunucuda tutulur.
-- Fonksiyon ve veritabanı Frankfurt'ta (AB) çalışır. Kişisel veri işlendiği için yayına almadan önce KVKK aydınlatma metni ve açık rıza ihtiyacını değerlendirin.
+- Fonksiyon ve veritabanı İrlanda’da (AB) çalışır. Kişisel veri işlendiği için yayına almadan önce KVKK aydınlatma metni ve açık rıza ihtiyacını değerlendirin.
 
 ## Testler
 
