@@ -4,9 +4,10 @@ import { api } from "../lib/api";
 import { useApp } from "../lib/app";
 import { Alert } from "../components/ui";
 import { ProfileForm, emptyProfile } from "../components/ProfileForm";
+import { PalettePicker } from "../components/PalettePicker";
 
 export function OnboardingPage() {
-  const { refreshMe } = useApp();
+  const { refreshMe, palette, setPalette } = useApp();
   const [error, setError] = useState<string | null>(null);
   return (
     <div className="page" style={{ maxWidth: 620, paddingTop: 48 }}>
@@ -28,6 +29,11 @@ export function OnboardingPage() {
           }}
         />
         {error && <div style={{ marginTop: 12 }}><Alert kind="err">{error}</Alert></div>}
+      </div>
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3>Uygulamanın görünümü</h3>
+        <p className="small muted" style={{ margin: "4px 0 12px" }}>İstediğin zaman Ayarlar'dan değiştirebilirsin.</p>
+        <PalettePicker value={palette} onChange={setPalette} />
       </div>
     </div>
   );

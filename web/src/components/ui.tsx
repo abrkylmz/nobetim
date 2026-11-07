@@ -3,6 +3,22 @@ import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, Info, Loader2, X, XCircle } from "lucide-react";
 import { CATEGORY_META, type Confidence, type FieldScore, type ShiftCategory } from "../../../shared/types";
 
+/** Uygulama logosu: seçili renk temasının renklerini kullanır (turkuaz / pembe, açık / koyu). */
+export function Logo({ size = 34, inverted = false }: { size?: number; inverted?: boolean }) {
+  // inverted: renkli (tema geçişli) zemin üzerinde beyaz kutu
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden style={{ flexShrink: 0 }}>
+      <rect width="64" height="64" rx="16" fill={inverted ? "#FFFFFF" : "var(--primary)"} />
+      <g stroke={inverted ? "#8E2C5A" : "var(--primary-ink)"} strokeWidth="4" strokeLinecap="round" fill="none"
+        style={inverted ? { stroke: "color-mix(in srgb, var(--primary) 85%, #000)" } : undefined}>
+        <rect x="14" y="18" width="36" height="32" rx="6" />
+        <path d="M14 28h36M24 12v10M40 12v10" />
+      </g>
+      <path d="M27 39l4 4 8-9" fill="none" stroke="var(--accent)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function Card({ title, icon, action, children, className = "" }: { title?: ReactNode; icon?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <section className={`card ${className}`}>

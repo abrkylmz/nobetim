@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BarChart3, CalendarDays, FileClock, Home, Settings, Upload } from "lucide-react";
 import { api, ApiError, type MeResponse } from "./lib/api";
 import { AppProvider, go, useRoute, useTheme } from "./lib/app";
-import { Spinner } from "./components/ui";
+import { Logo, Spinner } from "./components/ui";
 import { AuthPage } from "./pages/Auth";
 import { OnboardingPage } from "./pages/Onboarding";
 import { DashboardPage } from "./pages/Dashboard";
@@ -23,7 +23,7 @@ const NAV = [
 
 export function App() {
   const route = useRoute();
-  const [theme, setTheme] = useTheme();
+  const { pref: theme, setPref: setTheme, palette, setPalette } = useTheme();
   const [me, setMe] = useState<MeResponse | null | undefined>(undefined);
 
   const refreshMe = useCallback(async () => {
@@ -34,7 +34,7 @@ export function App() {
 
   if (me === undefined) return <div style={{ display: "grid", placeItems: "center", height: "100vh" }}><Spinner size={28} /></div>;
   if (me === null) return <AuthPage onDone={refreshMe} />;
-  const ctx = { me, refreshMe, theme, setTheme };
+  const ctx = { me, refreshMe, theme, setTheme, palette, setPalette };
   if (!me.profile) return <AppProvider value={ctx}><OnboardingPage /></AppProvider>;
 
   const [, section, id] = route.split("/");
@@ -55,7 +55,7 @@ export function App() {
     <AppProvider value={ctx}>
       <div className="app">
         <aside className="sidebar">
-          <div className="brand"><img src="/favicon.svg" alt="" />Nöbetim</div>
+          <div className="brand"><Logo />Nöbetim</div>
           {NAV.map((n) => (
             <a key={n.path} href={`#${n.path}`} className={`navlink ${active === n.path ? "on" : ""}`}>
               <n.icon size={19} />{n.label}
@@ -67,7 +67,7 @@ export function App() {
         </aside>
         <div className="main">
           <header className="topbar">
-            <div className="brand" style={{ padding: 0 }}><img src="/favicon.svg" alt="" style={{ width: 30, height: 30 }} />Nöbetim</div>
+            <div className="brand" style={{ padding: 0 }}><Logo size={30} />Nöbetim</div>
             <a href="#/settings" className="iconbtn" aria-label="Ayarlar"><Settings size={22} /></a>
           </header>
           {page}

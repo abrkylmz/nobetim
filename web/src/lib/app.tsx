@@ -17,27 +17,41 @@ export const go = (path: string) => { location.hash = path; };
 // ---------- tema ----------
 
 export type ThemePref = "system" | "light" | "dark";
+/** Renk teması: açık/koyu tercihinden bağımsızdır (pembe tema da koyu modda çalışır). */
+export type Palette = "teal" | "pink";
 const THEME_KEY = "nobetim.theme";
+const PALETTE_KEY = "nobetim.palette";
 
-function applyTheme(pref: ThemePref) {
+// Tarayıcı çubuğunun rengi (mobilde adres çubuğu)
+const BAR_COLOR: Record<Palette, { light: string; dark: string }> = {
+  teal: { light: "#087F8C", dark: "#0D1720" },
+  pink: { light: "#B83E74", dark: "#1A1116" },
+};
+
+const read = <T extends string>(key: string, fallback: T): T => {
+  try { return (localStorage.getItem(key) as T) || fallback; } catch { return fallback; }
+};
+
+function applyTheme(pref: ThemePref, palette: Palette) {
   const dark = pref === "dark" || (pref === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0D1720" : "#087F8C");
+  const root = document.documentElement;
+  root.dataset.theme = dark ? "dark" : "light";
+  root.dataset.palette = palette;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", BAR_COLOR[palette][dark ? "dark" : "light"]);
 }
 
 export function useTheme() {
-  const [pref, setPref] = useState<ThemePref>(() => {
-    try { return (localStorage.getItem(THEME_KEY) as ThemePref) || "system"; } catch { return "system"; }
-  });
+  const [pref, setPref] = useState<ThemePref>(() => read<ThemePref>(THEME_KEY, "system"));
+  const [palette, setPalette] = useState<Palette>(() => (read<Palette>(PALETTE_KEY, "teal") === "pink" ? "pink" : "teal"));
   useEffect(() => {
-    applyTheme(pref);
-    try { localStorage.setItem(THEME_KEY, pref); } catch { /* yok say */ }
+    applyTheme(pref, palette);
+    try { localStorage.setItem(THEME_KEY, pref); localStorage.setItem(PALETTE_KEY, palette); } catch { /* yok say */ }
     const mq = matchMedia("(prefers-color-scheme: dark)");
-    const on = () => pref === "system" && applyTheme("system");
+    const on = () => pref === "system" && applyTheme("system", palette);
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
-  }, [pref]);
-  return [pref, setPref] as const;
+  }, [pref, palette]);
+  return { pref, setPref, palette, setPalette };
 }
 
 // ---------- uygulama bağlamı ----------
@@ -49,6 +63,8 @@ interface Ctx {
   toast: (text: string, kind?: Toast["kind"]) => void;
   theme: ThemePref;
   setTheme: (t: ThemePref) => void;
+  palette: Palette;
+  setPalette: (p: Palette) => void;
 }
 const AppCtx = createContext<Ctx | null>(null);
 export const useApp = () => useContext(AppCtx)!;

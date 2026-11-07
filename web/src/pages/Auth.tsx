@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CalendarCheck, FileSpreadsheet, ShieldCheck, Sparkles } from "lucide-react";
 import { api } from "../lib/api";
-import { Alert, Field, Spinner } from "../components/ui";
+import { Alert, Field, Logo, Spinner } from "../components/ui";
 
 export function AuthPage({ onDone }: { onDone: () => Promise<void> }) {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -25,7 +25,7 @@ export function AuthPage({ onDone }: { onDone: () => Promise<void> }) {
   return (
     <div className="auth">
       <div className="art">
-        <div className="brand" style={{ padding: 0, color: "#fff" }}><img src="/favicon.svg" alt="" />Nöbetim</div>
+        <div className="brand" style={{ padding: 0, color: "#fff" }}><Logo inverted />Nöbetim</div>
         <div>
           <h1>Nöbet listeni yükle, takvimin kendiliğinden oluşsun.</h1>
           <ul>

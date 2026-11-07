@@ -5,9 +5,10 @@ import { api } from "../lib/api";
 import { useApp, type ThemePref } from "../lib/app";
 import { Alert, Card, Field, Modal, Spinner } from "../components/ui";
 import { ProfileForm } from "../components/ProfileForm";
+import { PalettePicker } from "../components/PalettePicker";
 
 export function SettingsPage() {
-  const { me, refreshMe, toast, theme, setTheme } = useApp();
+  const { me, refreshMe, toast, theme, setTheme, palette, setPalette } = useApp();
   return (
     <div className="page" style={{ maxWidth: 900 }}>
       <div className="page-head"><div><h1>Ayarlar</h1><p className="muted">{me.email}</p></div></div>
@@ -17,14 +18,17 @@ export function SettingsPage() {
             try { await api.saveProfile(p); await refreshMe(); toast("Profil kaydedildi."); } catch (e) { toast((e as Error).message, "err"); }
           }} />
         </Card>
-        <ShiftTypesCard />
         <Card title="Görünüm" icon={<Palette size={18} />}>
+          <div className="field" style={{ marginBottom: 8 }}>Renk teması</div>
+          <PalettePicker value={palette} onChange={setPalette} />
+          <div className="field" style={{ margin: "18px 0 8px" }}>Açık / koyu</div>
           <div className="seg">
             {([["system", "Sistem", Monitor], ["light", "Açık", Sun], ["dark", "Koyu", Moon]] as [ThemePref, string, typeof Sun][]).map(([k, t, I]) => (
               <button key={k} className={theme === k ? "on" : ""} onClick={() => setTheme(k)}><span className="row" style={{ gap: 6 }}><I size={15} />{t}</span></button>
             ))}
           </div>
         </Card>
+        <ShiftTypesCard />
         <Card title="Gizlilik ve veriler" icon={<ShieldCheck size={18} />}>
           <ul className="small muted" style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
             <li>Yüklediğin dosyalar sunucuda AES-256 ile şifreli saklanır ve en geç 30 gün sonra otomatik silinir. İstediğin an Dosya geçmişi'nden silebilirsin.</li>
