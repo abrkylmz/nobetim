@@ -8,6 +8,7 @@ import { api, type ReviewDetail } from "../lib/api";
 import { go, useApp } from "../lib/app";
 import { fmtDate, fmtNum, initials, MONTHS, WEEKDAYS_SHORT } from "../lib/format";
 import { Alert, CodeChip, ConfidenceBadge, Empty, Field, Modal, Skeleton, Spinner } from "../components/ui";
+import { DeleteDialog } from "./History";
 
 const SOURCE_TEXT: Record<string, string> = { excel: "Excel", "pdf-text": "PDF (metin)", "pdf-scan": "Taranmış PDF (OCR)", image: "Fotoğraf (OCR)" };
 
@@ -162,6 +163,7 @@ function ReviewView({ d, setD, types }: { d: ReviewDetail; setD: (x: ReviewDetai
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const readonly = d.status === "confirmed";
+  const [deleting, setDeleting] = useState(false);
 
   const active = d.draft.filter((e) => !e.excluded);
   const counts = {
@@ -198,7 +200,12 @@ function ReviewView({ d, setD, types }: { d: ReviewDetail; setD: (x: ReviewDetai
           <h1>{readonly ? "Onaylanan çizelge" : "Analiz sonucu"}</h1>
           <p className="muted">{readonly ? "Bu kayıtlar takviminde." : "Kayıtları kontrol et. Onaylamadan takvime hiçbir şey eklenmez."}</p>
         </div>
-        {readonly && <a className="btn secondary" href="#/calendar">Takvimde gör</a>}
+        {readonly && (
+          <div className="row">
+            <a className="btn secondary" href="#/calendar">Takvimde gör</a>
+            <button className="btn danger" onClick={() => setDeleting(true)}><Trash2 size={17} />Çizelgeyi sil</button>
+          </div>
+        )}
       </div>
 
       <div className="card">
@@ -288,6 +295,12 @@ function ReviewView({ d, setD, types }: { d: ReviewDetail; setD: (x: ReviewDetai
         </div>
       )}
 
+      {deleting && (
+        <DeleteDialog item={d} onClose={() => setDeleting(false)} onDone={(n) => {
+          toast(n ? `Çizelge ve takvimdeki ${n} nöbet silindi.` : "Çizelge silindi.");
+          go("/history");
+        }} />
+      )}
       {confirming && (
         <ConfirmDialog conflicts={conflicts} total={counts.total} duplicate={counts.duplicate} onClose={() => setConfirming(false)} onConfirm={async (opts) => {
           setBusy(true);

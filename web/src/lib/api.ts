@@ -50,6 +50,8 @@ export const api = {
   addShift: (b: ShiftBody) => call<Shift>("POST", "/api/shifts", b),
   updateShift: (id: string, b: ShiftBody) => call<Shift>("PUT", `/api/shifts/${id}`, b),
   deleteShift: (id: string) => call("DELETE", `/api/shifts/${id}`),
+  /** Tarih aralığında başlayan tüm kayıtları siler (ör. ayı temizle) */
+  clearShifts: (from: string, to: string) => call<{ removed: number }>("DELETE", `/api/shifts?from=${from}&to=${to}`),
   imports: () => call<ImportSummary[]>("GET", "/api/imports"),
   import: (id: string) => call<ReviewDetail>("GET", `/api/imports/${id}`),
   select: (id: string, key: string) => call<ReviewDetail>("POST", `/api/imports/${id}/select`, { key }),
@@ -60,7 +62,8 @@ export const api = {
   confirm: (id: string, opts: { replaceConflicts: boolean; rememberCodes: boolean }) =>
     call<{ saved: number; skipped: number; replaced: number }>("POST", `/api/imports/${id}/confirm`, opts),
   discard: (id: string) => call<ReviewDetail>("POST", `/api/imports/${id}/discard`, {}),
-  removeImport: (id: string, deleteShifts: boolean) => call("DELETE", `/api/imports/${id}${deleteShifts ? "?deleteShifts=1" : ""}`),
+  removeImport: (id: string, deleteShifts: boolean) =>
+    call<{ ok: true; removedShifts: number }>("DELETE", `/api/imports/${id}${deleteShifts ? "?deleteShifts=1" : ""}`),
 
   /** Dosya yükleme: ilerleme yüzdesi için XMLHttpRequest kullanılır. */
   upload(files: File[], onProgress: (pct: number) => void): Promise<{ id: string; duplicateOf: ImportSummary | null }> {

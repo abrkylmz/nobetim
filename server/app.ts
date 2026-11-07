@@ -9,7 +9,7 @@ import { buildInterval, daysInMonth, fromMs, ymd } from "../shared/time.js";
 import { holidaysOf } from "../shared/holidays.js";
 import {
   deleteShift, deleteUserData, getImport, getProfile, getShift, insertShift, listImports, listShiftTypes, listShifts,
-  one, openDb, replaceShiftTypes, saveProfile, seedShiftTypes, updateShift, type DB, type ShiftInput,
+  one, openDb, replaceShiftTypes, run, saveProfile, seedShiftTypes, updateShift, type DB, type ShiftInput,
 } from "./db.js";
 import { COOKIE, createSession, createUser, destroySession, findUserByEmail, rateLimit, requireAuth, verifyPassword, type AuthedRequest } from "./auth.js";
 import type { FileStore } from "./fileStore.js";
@@ -259,8 +259,8 @@ export async function createApp(opts: AppOptions) {
   });
   app.post("/api/imports/:id/discard", async (req, res) => { await imports.discard(uid(req), param(req, "id")); await detail(req, res); });
   app.delete("/api/imports/:id", async (req, res) => {
-    await imports.remove(uid(req), param(req, "id"), req.query.deleteShifts === "1");
-    res.json({ ok: true });
+    const r = await imports.remove(uid(req), param(req, "id"), req.query.deleteShifts === "1");
+    res.json({ ok: true, ...r });
   });
 
   // ---------- takvim ----------
@@ -311,6 +311,14 @@ export async function createApp(opts: AppOptions) {
     await updateShift(db, uid(req), param(req, "id"), s);
     res.json(await getShift(db, uid(req), param(req, "id")));
   });
+  // Toplu silme: bir tarih aralığındaki (ör. ayın) tüm kayıtlar. Yalnızca o aralıkta BAŞLAYAN kayıtlar silinir.
+  app.delete("/api/shifts", async (req, res) => {
+    const from = req.query.from, to = req.query.to;
+    if (!isDate(from) || !isDate(to) || from > to) return res.status(400).json({ error: "Geçerli bir tarih aralığı gerekli." });
+    const removed = await run(db, "DELETE FROM shifts WHERE user_id = ? AND date >= ? AND date <= ?", [uid(req), from, to]);
+    res.json({ removed });
+  });
+
   app.delete("/api/shifts/:id", async (req, res) => {
     if (!(await deleteShift(db, uid(req), param(req, "id")))) return res.status(404).json({ error: "Kayıt bulunamadı." });
     res.json({ ok: true });

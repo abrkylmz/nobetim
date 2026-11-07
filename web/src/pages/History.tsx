@@ -87,23 +87,37 @@ export function HistoryPage() {
         </div>
       )}
 
-      {del && <DeleteDialog item={del} onClose={() => setDel(null)} onDone={() => { setDel(null); void reload(); toast("Kayıt silindi."); }} />}
+      {del && <DeleteDialog item={del} onClose={() => setDel(null)} onDone={(n) => { setDel(null); void reload(); toast(n ? `Çizelge ve takvimdeki ${n} nöbet silindi.` : "Çizelge silindi."); }} />}
     </div>
   );
 }
 
-function DeleteDialog({ item, onClose, onDone }: { item: ImportSummary; onClose: () => void; onDone: () => void }) {
-  const [shifts, setShifts] = useState(false);
+/** Çizelgeyi tamamen sil: kayıt, saklanan dosya ve (varsayılan olarak) takvime eklenen nöbetler. */
+export function DeleteDialog({ item, onClose, onDone }: { item: ImportSummary; onClose: () => void; onDone: (removedShifts: number) => void }) {
+  const confirmed = item.status === "confirmed";
+  const [shifts, setShifts] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
-    <Modal title="Yüklemeyi sil" onClose={onClose} footer={<>
+    <Modal title="Çizelgeyi sil" onClose={onClose} footer={<>
       <button className="btn ghost" onClick={onClose}>Vazgeç</button>
-      <button className="btn danger" disabled={busy} onClick={async () => { setBusy(true); await api.removeImport(item.id, shifts); onDone(); }}>{busy && <Spinner />}Sil</button>
+      <button className="btn danger" disabled={busy} onClick={async () => {
+        setBusy(true); setError(null);
+        try { const r = await api.removeImport(item.id, confirmed && shifts); onDone(r.removedShifts); }
+        catch (e) { setError((e as Error).message); setBusy(false); }
+      }}>{busy ? <Spinner /> : <Trash2 size={17} />}Kalıcı olarak sil</button>
     </>}>
-      <p><b>{item.fileName}</b> ve saklanan dosyası kalıcı olarak silinecek.</p>
-      {item.status === "confirmed" && (
-        <label className="check" style={{ marginTop: 14 }}><input type="checkbox" checked={shifts} onChange={(e) => setShifts(e.target.checked)} />Bu çizelgeden takvime eklenen {item.shiftCount} nöbeti de sil</label>
+      <p><b>{item.fileName}</b> çizelgesi ve saklanan dosyası kalıcı olarak silinecek.</p>
+      {confirmed && (
+        <>
+          <label className="check" style={{ marginTop: 14 }}>
+            <input type="checkbox" checked={shifts} onChange={(e) => setShifts(e.target.checked)} />
+            Bu çizelgeden takvime eklenen <b>{item.shiftCount} nöbeti</b> de takvimden kaldır
+          </label>
+          {!shifts && <p className="small muted" style={{ marginTop: 8 }}>Nöbetler takvimde kalır ve elle eklenmiş gibi görünür.</p>}
+        </>
       )}
+      {error && <div style={{ marginTop: 12 }}><Alert kind="err">{error}</Alert></div>}
     </Modal>
   );
 }

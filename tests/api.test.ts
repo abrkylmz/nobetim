@@ -240,6 +240,52 @@ describe("Doğrulama", () => {
   });
 });
 
+describe("Çizelge ve takvim silme", () => {
+  it("çizelgeyi nöbetleriyle birlikte tamamen siler; isterse nöbetleri bırakır", async () => {
+    const a = await app();
+    const agent = await signedIn(a);
+    const { detail } = await uploadAndWait(a, agent, [{ name: "l.xlsx", buffer: novExcel() }]);
+    await post(agent, `/api/imports/${detail.id}/confirm`).expect(200);
+    const count = Object.keys(AYSE).length;
+    expect((await agent.get("/api/shifts?from=2026-11-01&to=2026-11-30")).body).toHaveLength(count);
+
+    const del = await agent.delete(`/api/imports/${detail.id}?deleteShifts=1`).set("X-Nobetim", "1");
+    expect(del.body).toMatchObject({ ok: true, removedShifts: count });
+    expect((await agent.get("/api/shifts?from=2026-11-01&to=2026-11-30")).body).toHaveLength(0);
+    expect((await agent.get(`/api/imports/${detail.id}`)).status).toBe(404);
+    expect(fs.readdirSync(path.join(a.dataDir, "uploads"))).toHaveLength(0); // dosya da silindi
+
+    // Aynı dosya tekrar yüklenince artık "mükerrer" sayılmaz
+    const again = await uploadAndWait(a, agent, [{ name: "l.xlsx", buffer: novExcel() }]);
+    expect(again.detail.duplicateOf).toBeNull();
+    await post(agent, `/api/imports/${again.detail.id}/confirm`).expect(200);
+    const keep = await agent.delete(`/api/imports/${again.detail.id}`).set("X-Nobetim", "1");
+    expect(keep.body.removedShifts).toBe(0);
+    const left = (await agent.get("/api/shifts?from=2026-11-01&to=2026-11-30")).body;
+    expect(left).toHaveLength(count);
+    expect(left.every((s: any) => s.source === "manual" && s.importId === null)).toBe(true);
+  });
+
+  it("ayı temizler: yalnızca o ayda başlayan kayıtlar silinir", async () => {
+    const a = await app();
+    const agent = await signedIn(a);
+    await post(agent, "/api/shifts", { date: "2026-10-31", category: "night", code: "N", start: "16:00", end: "08:00" }).expect(201);
+    await post(agent, "/api/shifts", { date: "2026-11-05", category: "day", code: "G", start: "08:00", end: "16:00" }).expect(201);
+    await post(agent, "/api/shifts", { date: "2026-11-20", category: "leave", code: "İ" }).expect(201);
+    await post(agent, "/api/shifts", { date: "2026-12-01", category: "day", code: "G", start: "08:00", end: "16:00" }).expect(201);
+    const r = await agent.delete("/api/shifts?from=2026-11-01&to=2026-11-30").set("X-Nobetim", "1");
+    expect(r.body.removed).toBe(2);
+    const rest = (await agent.get("/api/shifts?from=2026-10-01&to=2026-12-31")).body.map((s: any) => s.date);
+    expect(rest).toEqual(["2026-10-31", "2026-12-01"]);
+    expect((await agent.delete("/api/shifts?from=2026-11-30&to=2026-11-01").set("X-Nobetim", "1")).status).toBe(400);
+    // Başka kullanıcının kayıtlarına dokunmaz
+    const other = await signedIn(a, { fullName: "Fatma Demir" });
+    await post(other, "/api/shifts", { date: "2026-10-10", category: "day", start: "08:00", end: "16:00" }).expect(201);
+    await agent.delete("/api/shifts?from=2026-10-01&to=2026-10-31").set("X-Nobetim", "1");
+    expect((await other.get("/api/shifts?from=2026-10-01&to=2026-10-31")).body).toHaveLength(1);
+  });
+});
+
 describe("Güvenlik ve gizlilik", () => {
   it("diğer personelin verileri onaydan sonra saklanmaz", async () => {
     const a = await app();

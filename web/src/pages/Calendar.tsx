@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eraser, FileText, Plus } from "lucide-react";
 import { CATEGORY_META, isWork, type Shift } from "../../../shared/types";
 import { addDays, daysInMonth, toMs, weekday, ymd, HOUR } from "../../../shared/time";
 import { holidayOn } from "../../../shared/holidays";
 import { api } from "../lib/api";
-import { useLoad } from "../lib/app";
+import { useApp, useLoad } from "../lib/app";
 import { fmtDate, fmtHours, fmtNum, MONTHS, shiftRange, shortCode, todayStr, WEEKDAYS_SHORT } from "../lib/format";
-import { Alert, CodeChip, Modal } from "../components/ui";
+import { Alert, CodeChip, Modal, Spinner } from "../components/ui";
 import { ShiftEditor } from "../components/ShiftEditor";
 
 type View = "month" | "week";
@@ -45,6 +45,11 @@ export function CalendarPage() {
 
   const done = () => { setEditor(null); setDayOpen(null); void reload(); };
 
+  // Ayı temizle: yalnızca bu ayda başlayan kayıtlar (önceki aydan sarkan gece nöbeti hariç)
+  const [clearing, setClearing] = useState(false);
+  const monthList = list.filter((s) => s.date.startsWith(cursor.slice(0, 7)));
+  const monthCount = monthList.length;
+
   return (
     <div className="page">
       <div className="page-head">
@@ -57,6 +62,9 @@ export function CalendarPage() {
             <button className={view === "month" ? "on" : ""} onClick={() => setView("month")}>Aylık</button>
             <button className={view === "week" ? "on" : ""} onClick={() => setView("week")}>Haftalık</button>
           </div>
+          {view === "month" && monthCount > 0 && (
+            <button className="btn danger" onClick={() => setClearing(true)}><Eraser size={17} />Ayı temizle</button>
+          )}
           <button className="btn" onClick={() => setEditor({ date: cursor.slice(0, 7) === t.slice(0, 7) ? t : cursor })}><Plus size={18} />Nöbet ekle</button>
         </div>
       </div>
@@ -107,7 +115,39 @@ export function CalendarPage() {
         <DaySheet date={dayOpen} shifts={list} onClose={() => setDayOpen(null)} onEdit={(s) => setEditor({ shift: s, date: s.date })} onAdd={() => setEditor({ date: dayOpen })} />
       )}
       {editor && <ShiftEditor shift={editor.shift} date={editor.date} onClose={() => setEditor(null)} onSaved={done} />}
+      {clearing && (
+        <ClearMonthDialog year={y} month={m} shifts={monthList} onClose={() => setClearing(false)} onDone={() => { setClearing(false); void reload(); }} />
+      )}
     </div>
+  );
+}
+
+function ClearMonthDialog({ year, month, shifts, onClose, onDone }: { year: number; month: number; shifts: Shift[]; onClose: () => void; onDone: () => void }) {
+  const { toast } = useApp();
+  const [busy, setBusy] = useState(false);
+  const fromRoster = shifts.filter((s) => s.importId).length;
+  const manual = shifts.length - fromRoster;
+  return (
+    <Modal title={`${MONTHS[month - 1]} ${year} temizlensin mi?`} onClose={onClose} footer={<>
+      <button className="btn ghost" onClick={onClose}>Vazgeç</button>
+      <button className="btn danger" disabled={busy} onClick={async () => {
+        setBusy(true);
+        try {
+          const r = await api.clearShifts(ymd(year, month, 1), ymd(year, month, daysInMonth(year, month)));
+          toast(`${r.removed} kayıt takvimden kaldırıldı.`);
+          onDone();
+        } catch (e) { toast((e as Error).message, "err"); setBusy(false); }
+      }}>{busy ? <Spinner /> : <Eraser size={17} />}{shifts.length} kaydı sil</button>
+    </>}>
+      <p>Bu ayda başlayan <b>{shifts.length} kayıt</b> takvimden kalıcı olarak silinecek:</p>
+      <ul className="small" style={{ margin: "10px 0 0", paddingLeft: 18 }}>
+        <li>{fromRoster} kayıt çizelgeden</li>
+        <li>{manual} kayıt elle eklenmiş</li>
+      </ul>
+      <p className="small muted" style={{ marginTop: 12 }}>
+        Yüklediğin çizelgeler dosya geçmişinde kalır; istersen oradan yeniden analiz edip tekrar ekleyebilirsin.
+      </p>
+    </Modal>
   );
 }
 
@@ -126,15 +166,22 @@ function DaySheet({ date, shifts, onClose, onEdit, onAdd }: { date: string; shif
           </div>
         ))}
         {start.map((s) => (
-          <button key={s.id} className="list-item" style={{ background: "none", border: 0, borderBottom: "1px solid var(--line)", width: "100%", textAlign: "left", cursor: "pointer", color: "inherit" }} onClick={() => onEdit(s)}>
-            <CodeChip code={s.code} color={s.color} />
-            <div style={{ flex: 1 }}>
-              <b>{s.label}</b>{s.isExtra && <span className="badge warn" style={{ marginLeft: 6 }}>Ek nöbet</span>}
-              <div className="small muted">{shiftRange(s)}{isWork(s.category) && ` · ${fmtHours(s.hours)}`}{s.department && ` · ${s.department}`}</div>
-              {s.note && <div className="small">{s.note}</div>}
-            </div>
-            <span className="badge neutral">{s.source === "manual" ? "Elle eklendi" : "Çizelgeden"}</span>
-          </button>
+          <div key={s.id} style={{ borderBottom: "1px solid var(--line)", paddingBottom: 8 }}>
+            <button className="list-item" style={{ background: "none", border: 0, width: "100%", textAlign: "left", cursor: "pointer", color: "inherit" }} onClick={() => onEdit(s)}>
+              <CodeChip code={s.code} color={s.color} />
+              <div style={{ flex: 1 }}>
+                <b>{s.label}</b>{s.isExtra && <span className="badge warn" style={{ marginLeft: 6 }}>Ek nöbet</span>}
+                <div className="small muted">{shiftRange(s)}{isWork(s.category) && ` · ${fmtHours(s.hours)}`}{s.department && ` · ${s.department}`}</div>
+                {s.note && <div className="small">{s.note}</div>}
+              </div>
+              <span className="badge neutral">{s.importId ? "Çizelgeden" : "Elle eklendi"}</span>
+            </button>
+            {s.importId && (
+              <a className="small row" style={{ gap: 4, paddingLeft: 52 }} href={`#/imports/${s.importId}`}>
+                <FileText size={14} />Kaynak çizelgeyi aç (tüm çizelgeyi silmek için)
+              </a>
+            )}
+          </div>
         ))}
       </div>
     </Modal>

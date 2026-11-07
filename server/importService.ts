@@ -243,12 +243,15 @@ export function createImportService({ db, files, ai, retentionDays, defer }: Imp
     async remove(userId: string, id: string, deleteShifts: boolean) {
       const imp = await requireImport(userId, id);
       if (imp.status === "processing") throw new ServiceError(409, "Analiz sürerken silinemez.");
-      await db.tx(async (t) => {
-        if (deleteShifts) await run(t, "DELETE FROM shifts WHERE user_id = ? AND import_id = ?", [userId, id]);
-        await run(t, "UPDATE shifts SET import_id = NULL WHERE user_id = ? AND import_id = ?", [userId, id]);
+      const removedShifts = await db.tx(async (t) => {
+        const n = deleteShifts ? await run(t, "DELETE FROM shifts WHERE user_id = ? AND import_id = ?", [userId, id]) : 0;
+        // Takvimde bırakılan nöbetler elle eklenmiş gibi kalır
+        await run(t, "UPDATE shifts SET import_id = NULL, source = 'manual' WHERE user_id = ? AND import_id = ?", [userId, id]);
         await run(t, "DELETE FROM imports WHERE id = ? AND user_id = ?", [id, userId]);
+        return n;
       });
       for (const f of imp.storedFiles ?? []) await files.remove(f.path);
+      return { removedShifts };
     },
 
     /** Uzun süredir "analiz ediliyor" görünen (fonksiyonu sonlanmış) kayıtları başarısız işaretler. */
