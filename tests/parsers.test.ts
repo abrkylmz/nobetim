@@ -259,6 +259,18 @@ describe("ShiftNormalizer ve ShiftValidator (senaryo 10, 11, 12)", () => {
     expect(by["02"].confidence.time.level).toBe("medium"); // onaysız varsayılan saat
   });
 
+  it("yaygın kısaltmaları (X, R.P., N.Ç., D.S.İ., A.İ, E.İ.) tahminle tanır ve kontrole bırakır", () => {
+    const e = validateDraft(normalizeCells(cells({ 1: "X", 2: "R.P.", 3: "N.Ç.", 4: "D.S.İ.", 5: "A.İ", 6: "E.İ.", 7: "Y.İ.", 8: "Q" }), ctx), []);
+    const by = (d: number) => e.find((x) => x.date === `2026-11-0${d}`)!;
+    expect(by(1)).toMatchObject({ category: "off", status: "check" });
+    expect(by(2)).toMatchObject({ category: "sick", status: "check" });
+    expect(by(3)).toMatchObject({ category: "off", label: "Nöbet çıkışı" });
+    for (const d of [4, 5, 6]) expect(by(d)).toMatchObject({ category: "leave", hours: 0, status: "check" });
+    expect(by(7)).toMatchObject({ category: "leave", label: "Yıllık izin" }); // kullanıcının sözlüğünden
+    expect(by(8).status).toBe("error"); // gerçekten bilinmeyen kod yine hata
+    expect(blockingEntries(e)).toHaveLength(1);
+  });
+
   it("eğik çizgili saat kodlarını okur: 16/08, 08/16, 08/08", () => {
     const e = validateDraft(normalizeCells(cells({ 2: "16/08", 3: "08/16", 4: "08/08", 5: "Ek 16/08", 6: "G/N" }), ctx), []);
     const by = (d: string) => e.filter((x) => x.date === `2026-11-0${d}`);

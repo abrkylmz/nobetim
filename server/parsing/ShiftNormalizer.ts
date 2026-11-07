@@ -56,6 +56,27 @@ function categoryFromWords(text: string): ShiftCategory | null {
 
 const score = (s: number, reason?: string): FieldScore => ({ score: s, level: levelOf(s), reason });
 
+/**
+ * Çizelgelerde sık görülen, saat içermeyen kısaltmalar. Noktalar ve büyük/küçük harf yok sayılır.
+ * Sonu "İ" (izin) ile biten 1-3 harfli kısaltmalar izin sayılır: Y.İ., D.S.İ., A.İ, E.İ., M.İ. …
+ */
+export function commonAbbreviation(code: string): { label: string; category: ShiftCategory } | null {
+  const k = codeKey(code);
+  const fixed: Record<string, { label: string; category: ShiftCategory }> = {
+    x: { label: "Boş gün", category: "off" },
+    rp: { label: "Rapor", category: "sick" },
+    nc: { label: "Nöbet çıkışı", category: "off" },
+    ht: { label: "Hafta tatili", category: "off" },
+    rt: { label: "Resmî tatil", category: "holiday" },
+  };
+  if (fixed[k]) return fixed[k];
+  // Orijinal yazımda harfler arasında nokta olan veya büyük harfle yazılmış kısa izin kodları
+  if (/^[a-z]{0,2}i$/.test(k) && k.length >= 2 && /İ\.?$|I\.?$/.test(code.trim())) {
+    return { label: `İzin (${code.trim()})`, category: "leave" };
+  }
+  return null;
+}
+
 interface Resolution {
   code: string;
   label: string;
@@ -141,6 +162,17 @@ function resolvePart(raw: string, ctx: NormalizeContext): Resolution {
       issues.push({ code: "missing_time", severity: "error", message: `"${text}" için saat bilgisi bulunamadı. Başlangıç ve bitiş saatini gir.` });
     }
     return res;
+  }
+
+  // 3b) Türk hastane çizelgelerinde yaygın kısaltmalar (kullanıcının sözlüğünde yoksa). Tahmin olduğu için orta güven.
+  const abbr = commonAbbreviation(base);
+  if (abbr) {
+    return {
+      code: text, label: abbr.label, category: abbr.category, start: null, end: null, isExtra: false,
+      type: score(0.7, "Yaygın kısaltmadan tahmin edildi"), time: score(1),
+      issues: [{ code: "default_time", severity: "warning",
+        message: `"${text}" kodu "${abbr.label}" olarak yorumlandı. Doğru değilse düzelt; kodu Ayarlar'dan sözlüğe ekleyebilirsin.` }],
+    };
   }
 
   // 4) Sözcükten tahmin ("Yıllık İzin", "Rapor", "Gece")
