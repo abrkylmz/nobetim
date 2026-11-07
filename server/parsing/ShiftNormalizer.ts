@@ -12,8 +12,15 @@ import { codeKey, fold, foldWords } from "./text.js";
 
 const TIME_RANGE = /(\d{1,2})(?:[:.](\d{2}))?\s*[-–—]\s*(\d{1,2})(?:[:.](\d{2}))?/;
 
+/**
+ * Eğik çizgili saat aralığı: "16/08", "08/16", "08:00/16:00", "Ek 16/08".
+ * Yalnızca hücre bu biçimdeyse saat sayılır; "G/N" gibi kod birleşimleri ve tarihler (01/11/2026) etkilenmez.
+ */
+const SLASH_RANGE = /^(?:(ek)\s*)?(\d{1,2})(?:[:.](\d{2}))?\s*\/\s*(\d{1,2})(?:[:.](\d{2}))?(?:\s*(ek))?$/i;
+
 export function parseTimeRange(s: string): { start: string; end: string } | null {
-  const m = TIME_RANGE.exec(s);
+  const sl = SLASH_RANGE.exec(s.trim());
+  const m = sl ? [sl[0], sl[2], sl[3], sl[4], sl[5]] : TIME_RANGE.exec(s);
   if (!m) return null;
   const s1 = parseHM(`${m[1]}:${m[2] ?? "00"}`), e1 = parseHM(`${m[3]}:${m[4] ?? "00"}`);
   if (s1 == null || e1 == null) return null;
@@ -83,7 +90,7 @@ function resolvePart(raw: string, ctx: NormalizeContext): Resolution {
   const range = parseTimeRange(text);
   if (range) {
     const category = categoryFromTimes(range.start, range.end);
-    const word = text.replace(TIME_RANGE, "").replace(/\bek\b/gi, "").trim();
+    const word = SLASH_RANGE.test(text) ? "" : text.replace(TIME_RANGE, "").replace(/\bek\b/gi, "").trim();
     return {
       code: text, label: word || CATEGORY_META[category].label,
       category, start: range.start, end: range.end, isExtra,

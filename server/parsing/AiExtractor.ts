@@ -95,7 +95,7 @@ const SYSTEM = `Hastane hemşire nöbet/çalışma çizelgelerini okuyan bir ver
 Kurallar:
 - Tabloyu satır ve sütunlarıyla dikkatle hizala. Fotoğraf eğik, perspektifli, katlanmış veya el yazılı olabilir; satır kaymasına özellikle dikkat et.
 - Gün sütunlarını (1, 2, 3… ya da tarihler) bul. Hedef kişinin satırında her dolu gün hücresi için {day, text} yaz. Boş günleri yazma.
-- Hücre içeriğini olduğu gibi aktar ("G", "N", "08-16", "16:00-08:00", "İ", "R", "Yİ", "EK N" gibi). Yorumlama, saat uydurma.
+- Hücre içeriğini olduğu gibi aktar ("G", "N", "08-16", "16:00-08:00", "16/08", "08/08", "İ", "R", "Yİ", "EK N" gibi). Yorumlama, saat uydurma. "16/08" gibi eğik çizgili saatleri tarih sanma; yazıldığı gibi aktar.
 - Tablo "tarih satırlarda, vardiyalar sütunlarda, isimler hücrelerde" biçimindeyse: hedef kişinin adının geçtiği her gün için text olarak o sütunun başlığını (ör. "08:00-16:00" veya "Gece") yaz.
 - Her hücre için okuma güvenini ver: high = net okunuyor; medium = okunuyor ama emin değilsin; low = tahmin. medium/low ise note alanına nedenini kısa Türkçe yaz (silik, üstü çizili, el yazısı belirsiz, satır kayması olabilir). Diğer durumlarda note boş.
 - Okuyamadığın hücreleri atlama: en olası değeri yaz ve low işaretle.

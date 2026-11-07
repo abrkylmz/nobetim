@@ -6,13 +6,25 @@ const MAX_SHEETS = 25;
 const MAX_ROWS = 600;
 const MAX_COLS = 120;
 
+/** Biçim dizesinde (ör. "dd/mm", "m/d/yy", "[$-41F]d mmm") gün mü ay mı önce geliyor? Varsayılan: gün (Türkçe). */
+function markDayFirst(d: Date, fmt: string) {
+  const plain = fmt.replace(/\[[^\]]*\]|"[^"]*"/g, "").toLowerCase();
+  const di = plain.indexOf("d"), mi = plain.indexOf("m");
+  (d as Date & { dayFirst?: boolean }).dayFirst = !(mi >= 0 && (di < 0 || mi < di));
+}
+
 function cellValue(cell: XLSX.CellObject | undefined): GridValue {
   if (!cell || cell.v == null) return null;
   const fmt = (cell.z as string | undefined) ?? "";
   const looksDate = fmt ? XLSX.SSF.is_date(fmt) : typeof cell.w === "string" && /^\d{1,4}[./-]\d{1,2}[./-]\d{1,4}$|^\d{1,2}:\d{2}/.test(cell.w);
   if (cell.t === "n" && looksDate) {
     const p = XLSX.SSF.parse_date_code(cell.v as number);
-    if (p) return new Date(Date.UTC(p.y, p.m - 1, p.d, p.H, p.M));
+    if (p) {
+      const d = new Date(Date.UTC(p.y, p.m - 1, p.d, p.H, p.M));
+      // Excel "16/08" gibi saat kodlarını tarihe çevirebilir; gün mü ay mı önce yazıldığını sakla
+      markDayFirst(d, fmt || String(cell.w ?? ""));
+      return d;
+    }
   }
   if (cell.t === "d" && cell.v instanceof Date) return cell.v;
   if (cell.t === "e") return null;
@@ -47,7 +59,7 @@ export interface ExcelParseResult extends TableResult { sheetCount: number; csv:
 export function parseExcel(buf: Buffer): ExcelParseResult {
   let wb: XLSX.WorkBook;
   try {
-    wb = XLSX.read(buf, { type: "buffer", sheetRows: MAX_ROWS, cellFormula: false, cellHTML: false, bookVBA: false });
+    wb = XLSX.read(buf, { type: "buffer", sheetRows: MAX_ROWS, cellNF: true, cellFormula: false, cellHTML: false, bookVBA: false });
   } catch (e) {
     throw new ParseError(`excel: ${(e as Error).message}`, "Excel dosyası açılamadı. Dosya bozuk veya parola korumalı olabilir.");
   }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as XLSX from "xlsx";
 import { parseExcel } from "../server/parsing/ExcelParser";
 import { parsePdf } from "../server/parsing/PdfParser";
 import { prepareImage } from "../server/parsing/ImageParser";
@@ -176,6 +177,35 @@ describe("ShiftNormalizer ve ShiftValidator (senaryo 10, 11, 12)", () => {
     expect(by["16"]).toMatchObject({ category: "night", hours: 12, overnight: true });
     expect(by["16"].confidence.time.level).toBe("high");
     expect(by["02"].confidence.time.level).toBe("medium"); // onaysız varsayılan saat
+  });
+
+  it("eğik çizgili saat kodlarını okur: 16/08, 08/16, 08/08", () => {
+    const e = validateDraft(normalizeCells(cells({ 2: "16/08", 3: "08/16", 4: "08/08", 5: "Ek 16/08", 6: "G/N" }), ctx), []);
+    const by = (d: string) => e.filter((x) => x.date === `2026-11-0${d}`);
+    expect(by("2")[0]).toMatchObject({ start: "16:00", end: "08:00", startAt: "2026-11-02T16:00", endAt: "2026-11-03T08:00", hours: 16, overnight: true, category: "night" });
+    expect(by("3")[0]).toMatchObject({ start: "08:00", end: "16:00", hours: 8, overnight: false, category: "day" });
+    expect(by("4")[0]).toMatchObject({ endAt: "2026-11-05T08:00", hours: 24, category: "24h" });
+    expect(by("5")[0]).toMatchObject({ hours: 16, isExtra: true });
+    for (const x of [...by("2"), ...by("3"), ...by("4")]) {
+      expect(x.confidence.time.level).toBe("high"); // saat hücrede yazılı
+      expect(x.status).toBe("ok");
+    }
+    expect(by("6")).toHaveLength(2); // "G/N" kod birleşimi yine iki vardiyaya ayrılır
+    expect(parseTimeRange("01/11/2026")).toBeNull(); // tarih saat sanılmaz
+  });
+
+  it("Excel'in tarihe çevirdiği 16/08 ve 08/08 hücrelerini geri kazanır", () => {
+    const head = ["Adı Soyadı", ...Array.from({ length: 30 }, (_, i) => i + 1)];
+    const row: unknown[] = ["Ayşe Yılmaz", ...Array(30).fill("")];
+    row[1] = "08/16"; // ay 16 olamayacağı için Excel metin bırakır
+    const grid = [["KASIM 2026"], head, row];
+    const ws = XLSX.utils.aoa_to_sheet(grid);
+    // Türkçe Excel'in yaptığı gibi: "16/08" → 16 Ağustos, "08/08" → 8 Ağustos (gün/ay biçimli tarih)
+    ws[XLSX.utils.encode_cell({ r: 2, c: 2 })] = { t: "n", v: 46250, z: "dd/mm" };
+    ws[XLSX.utils.encode_cell({ r: 2, c: 3 })] = { t: "n", v: 46242, z: "dd/mm" };
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "L");
+    const r = parseExcel(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer);
+    expect(r.rows[0].cells.map((c) => c.raw)).toEqual(["08/16", "16/08", "08/08"]);
   });
 
   it("çizelgedeki lejant saatlerini varsayılanların önüne koyar", () => {

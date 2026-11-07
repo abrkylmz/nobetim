@@ -93,6 +93,18 @@ export function findLegend(grid: Grid): Legend[] {
   return [...out.values()];
 }
 
+/**
+ * Nöbet hücresinin metni. Excel "16/08" veya "08/08" yazısını tarihe (16 Ağustos) çevirmişse,
+ * hücrenin biçimine göre yeniden "16/08" yapılır; bu kodlar saat aralığı olarak okunur.
+ */
+function shiftCellText(v: GridValue): string {
+  if (v instanceof Date && !isNaN(v.getTime()) && v.getUTCFullYear() > 1901) {
+    const d = String(v.getUTCDate()).padStart(2, "0"), m = String(v.getUTCMonth() + 1).padStart(2, "0");
+    return (v as Date & { dayFirst?: boolean }).dayFirst === false ? `${m}/${d}` : `${d}/${m}`;
+  }
+  return cellText(v);
+}
+
 function pickColumn(heads: string[], re: RegExp): number {
   return heads.findIndex((h) => h && re.test(h));
 }
@@ -162,7 +174,7 @@ function analyzeRows(grid: Grid, rowsOut: Map<string, RosterRow>): { found: bool
 
       const cells: RosterCell[] = [];
       for (let i = 0; i < run.len; i++) {
-        const raw = cellText(row[run.start + i]);
+        const raw = shiftCellText(row[run.start + i]);
         if (raw) cells.push({ day: run.firstDay + i, raw, readScore: 1 });
       }
       if (!cells.length) continue;
