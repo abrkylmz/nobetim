@@ -40,6 +40,12 @@ export function findBlobToken(env: Env) {
     ?? (env.BLOB_READ_WRITE_TOKEN || undefined);
 }
 
+/** Yalnızca adına göre aranır (değer biçimi çok genel olduğundan değerden tahmin yapılmaz). */
+export function findBlobStoreId(env: Env) {
+  const key = env.BLOB_STORE_ID?.trim() ? "BLOB_STORE_ID" : Object.keys(env).sort().find((k) => k.endsWith("_BLOB_STORE_ID") && env[k]?.trim());
+  return key ? env[key]!.trim() : undefined;
+}
+
 /** Teşhis için yalnızca ilgili değişkenlerin ADLARI (değerleri asla) günlüğe yazılır. */
 function logEnvNames(env: Env) {
   const names = Object.keys(env).filter((k) => /DATABASE|POSTGRES|^PG|NEON|BLOB|STORAGE|ENCRYPTION|CRON/i.test(k)).sort();
@@ -65,9 +71,12 @@ export function configFromEnv(): AppOptions {
   else key = localKey(dataDir);
 
   const blobToken = findBlobToken(env);
+  const blobStoreId = findBlobStoreId(env);
   let files: FileStore;
-  if (blobToken) files = createBlobFileStore(blobToken, key);
-  else if (vercel) { logEnvNames(env); throw new ConfigError("BLOB_READ_WRITE_TOKEN tanımlı değil. Vercel'de bir Blob deposu bağlayıp yeniden yayınlayın."); }
+  if (blobToken) files = createBlobFileStore({ token: blobToken }, key);
+  // Yeni Blob depoları anahtar yerine BLOB_STORE_ID verir; kimlik Vercel'in OIDC jetonuyla doğrulanır
+  else if (vercel && blobStoreId) files = createBlobFileStore({ storeId: blobStoreId }, key);
+  else if (vercel) { logEnvNames(env); throw new ConfigError("Blob deposu bulunamadı (BLOB_STORE_ID / BLOB_READ_WRITE_TOKEN). Vercel'de bir Blob deposunu bu projeye bağlayıp yeniden yayınlayın."); }
   else files = createLocalFileStore(path.join(dataDir, "uploads"), key);
 
   return {

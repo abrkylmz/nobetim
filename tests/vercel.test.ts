@@ -4,9 +4,11 @@ import { randomBytes } from "node:crypto";
 import request from "supertest";
 
 const store = new Map<string, Buffer>();
+const putOptions: Record<string, unknown>[] = [];
 vi.mock("@vercel/blob", () => ({
   put: vi.fn(async (pathname: string, body: Buffer, opts: { access: string }) => {
     expect(opts.access).toBe("private");
+    putOptions.push(opts);
     store.set(pathname, Buffer.from(body));
     return { pathname, url: `https://blob.example/${pathname}` };
   }),
@@ -24,7 +26,7 @@ const { makeApp } = await import("./helpers");
 
 describe("Vercel Blob dosya deposu", () => {
   it("dosyayı şifreli ve özel olarak yazar, okur ve siler", async () => {
-    const files = createBlobFileStore("tok", randomBytes(32));
+    const files = createBlobFileStore({ token: "tok" }, randomBytes(32));
     const plain = Buffer.from("Ayşe Yılmaz;G;N;24 — gizli çizelge");
     const ref = await files.save(plain);
     expect(ref).toMatch(/^nobetim\/[0-9a-f-]{36}\.bin$/);
@@ -33,8 +35,15 @@ describe("Vercel Blob dosya deposu", () => {
     await files.remove(ref);
     expect(store.has(ref)).toBe(false);
   });
+  it("yeni Blob depolarında anahtar yerine depo kimliğiyle (OIDC) çalışır", async () => {
+    const files = createBlobFileStore({ storeId: "store_abc123" }, randomBytes(32));
+    const ref = await files.save(Buffer.from("x"));
+    expect(putOptions.at(-1)).toMatchObject({ storeId: "store_abc123" });
+    expect(putOptions.at(-1)).not.toHaveProperty("token");
+    expect((await files.read(ref)).toString()).toBe("x");
+  });
   it("geçersiz dosya referanslarını reddeder", async () => {
-    const files = createBlobFileStore("tok", randomBytes(32));
+    const files = createBlobFileStore({ token: "tok" }, randomBytes(32));
     await expect(files.read("../baska/dosya")).rejects.toThrow();
   });
 });
@@ -49,8 +58,8 @@ describe("Vercel yapılandırması", () => {
     process.env.DATABASE_URL = "postgresql://u:p@ep-x-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require";
     expect(() => configFromEnv()).toThrow(/FILE_ENCRYPTION_KEY/);
     process.env.FILE_ENCRYPTION_KEY = randomBytes(32).toString("hex");
-    expect(() => configFromEnv()).toThrow(/BLOB_READ_WRITE_TOKEN/);
-    process.env.BLOB_READ_WRITE_TOKEN = "tok";
+    expect(() => configFromEnv()).toThrow(/Blob deposu bulunamadı/);
+    process.env.BLOB_STORE_ID = "store_abc123"; // yeni depolar: OIDC + depo kimliği
     const c = configFromEnv();
     expect(c.maxUploadBytes).toBe(4 * 1024 * 1024);
     expect(c.secureCookies).toBe(true);

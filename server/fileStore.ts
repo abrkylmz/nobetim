@@ -63,30 +63,36 @@ export function createLocalFileStore(dir: string, key: Buffer): FileStore {
 
 const BLOB_PREFIX = "nobetim/";
 
-export function createBlobFileStore(token: string, key: Buffer): FileStore {
+/**
+ * Kimlik bilgisi iki yoldan biriyle gelir:
+ *  - token: eski usul BLOB_READ_WRITE_TOKEN
+ *  - storeId: yeni Blob depoları; Vercel fonksiyona otomatik OIDC jetonu verir, depo BLOB_STORE_ID ile seçilir
+ */
+export function createBlobFileStore(auth: { token?: string; storeId?: string }, key: Buffer): FileStore {
   const check = (ref: string) => {
     if (!new RegExp(`^${BLOB_PREFIX}[0-9a-f-]{36}\\.bin$`).test(ref)) throw new Error("invalid file ref");
     return ref;
   };
+  const creds = auth.token ? { token: auth.token } : { storeId: auth.storeId };
   const blob = () => import("@vercel/blob");
   return {
     async save(buf) {
       const { put } = await blob();
       const ref = `${BLOB_PREFIX}${randomUUID()}.bin`;
       await put(ref, encrypt(key, buf), {
-        access: "private", token, addRandomSuffix: false, contentType: "application/octet-stream",
+        access: "private", ...creds, addRandomSuffix: false, contentType: "application/octet-stream",
       });
       return ref;
     },
     async read(ref) {
       const { get } = await blob();
-      const r = await get(check(ref), { access: "private", token, useCache: false });
+      const r = await get(check(ref), { access: "private", ...creds, useCache: false });
       if (!r || r.statusCode !== 200) throw new Error("blob not found");
       return decrypt(key, Buffer.from(await new Response(r.stream).arrayBuffer()));
     },
     async remove(ref) {
       const { del } = await blob();
-      await del(check(ref), { token }).catch(() => {});
+      await del(check(ref), creds).catch(() => {});
     },
   };
 }
