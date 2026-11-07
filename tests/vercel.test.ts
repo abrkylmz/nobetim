@@ -59,6 +59,22 @@ describe("Vercel yapılandırması", () => {
   });
 });
 
+describe("Marketplace değişken adları", () => {
+  it("ön ekli Turso ve Blob değişkenlerini bulur", async () => {
+    const { findDatabaseEnv, findBlobToken } = await import("../server/config");
+    const env = {
+      NOBETIM_TURSO_DATABASE_URL: "libsql://nobetim-abrkylmz.aws-eu-west-1.turso.io",
+      NOBETIM_TURSO_AUTH_TOKEN: "tok-1",
+      DATABASE_URL: "postgres://baska-bir-veritabani",
+      STORE_READ_WRITE_TOKEN: "vercel_blob_rw_abc",
+    };
+    expect(findDatabaseEnv(env)).toMatchObject({ url: env.NOBETIM_TURSO_DATABASE_URL, authToken: "tok-1" });
+    expect(findBlobToken(env)).toBe("vercel_blob_rw_abc");
+    expect(findDatabaseEnv({ DATABASE_URL: "postgres://x" })).toBeUndefined();
+    expect(findDatabaseEnv({ TURSO_DATABASE_URL: "libsql://a.turso.io", TURSO_AUTH_TOKEN: "t" })).toMatchObject({ authToken: "t" });
+  });
+});
+
 describe("Cron temizlik uç noktası", () => {
   it("yalnızca doğru gizli anahtarla çalışır", async () => {
     const a = await makeApp(undefined, { cronSecret: "s3cret-value" });
