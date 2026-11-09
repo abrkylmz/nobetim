@@ -17,7 +17,7 @@ export function StatsPage() {
   const move = (d: number) => { const x = new Date(ym.y, ym.m - 1 + d, 1); setYm({ y: x.getFullYear(), m: x.getMonth() + 1 }); };
   const s = data?.month;
   const p = me.profile!;
-  const incomeEnabled = p.overtimeRate > 0 || p.holidayRate > 0;
+  const incomeEnabled = !!p.payGroup || p.overtimeRate > 0 || p.holidayRate > 0;
   const [metric, setMetric] = useState<Metric>(incomeEnabled ? "income" : "hours");
 
   const kpis = s ? [
@@ -65,15 +65,34 @@ export function StatsPage() {
             {!s ? <Skeleton h={60} /> : incomeEnabled ? (
               <>
                 <div className="kpi"><span className="value">{fmtMoney(s.estimatedIncome)}</span></div>
-                <p className="small muted" style={{ marginTop: 6 }}>
-                  {fmtNum(s.overtimeHours)} sa fazla mesai × {fmtRate(p.overtimeRate)}
-                  {p.holidayRate > 0 && <> + {fmtNum(s.holidayHours)} sa tatil × {fmtRate(p.holidayRate)}</>}
-                </p>
+                {s.pay ? (
+                  <>
+                    <p className="small muted" style={{ marginTop: 6 }}>
+                      {fmtNum(s.overtimeHours)} sa fazla mesai × ort. {fmtRate(s.pay.avgRate)}
+                    </p>
+                    <p className="tiny faint" style={{ marginTop: 2 }}>{s.pay.groupLabel}{s.pay.risky && " · riskli birim"} · {s.pay.periodLabel}</p>
+                    {s.workHours > 0 && (
+                      <div className="stack" style={{ gap: 4, marginTop: 8 }}>
+                        {s.pay.buckets.filter((b) => b.hours > 0).map((b) => (
+                          <div key={b.kind} className="row between tiny">
+                            <span className="muted">{BUCKET_LABEL[b.kind]}</span>
+                            <span>{fmtNum(b.hours)} sa · {fmtRate(b.rate)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="small muted" style={{ marginTop: 6 }}>
+                    {fmtNum(s.overtimeHours)} sa fazla mesai × {fmtRate(p.overtimeRate)}
+                    {p.holidayRate > 0 && <> + {fmtNum(s.holidayHours)} sa tatil × {fmtRate(p.holidayRate)}</>}
+                  </p>
+                )}
                 {data && <IncomeCompare data={data} ym={ym} />}
-                <p className="tiny faint" style={{ marginTop: 10 }}>Tahminidir; tüm aylar bugünkü saat ücretinle hesaplanır ve kurumunun ödeme kurallarına göre değişebilir.</p>
+                <p className="tiny faint" style={{ marginTop: 10 }}>{s.pay ? "Tahminidir; ücretli saatlerin gündüz/gece/bayram dağılımı ayın tüm çalışma saatleriyle aynı varsayılır. Kesin tutar için bordronu kontrol et." : "Tahminidir; tüm aylar bugünkü saat ücretinle hesaplanır ve kurumunun ödeme kurallarına göre değişebilir."}</p>
               </>
             ) : (
-              <p className="small muted">Tahmini geliri görmek için <a href="#/settings">Ayarlar</a>'dan saat ücretini gir.</p>
+              <p className="small muted">Tahmini geliri görmek için <a href="#/settings">Ayarlar</a>'dan nöbet ücreti tablonu seç ya da saat ücretini gir.</p>
             )}
           </Card>
           <Card title="Dağılım">
@@ -105,6 +124,8 @@ export function StatsPage() {
     </div>
   );
 }
+
+const BUCKET_LABEL = { day: "Gündüz", night: "Gece (20:00–08:00)", holiday: "Bayram gündüz", holidayNight: "Bayram gece" } as const;
 
 /** Saat ücreti: kuruş varsa göster (185,75 ₺ → ₺185,75) */
 const fmtRate = (n: number) => n.toLocaleString("tr-TR", { style: "currency", currency: "TRY", minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 });
@@ -156,7 +177,7 @@ function MonthlyChart({ data, selected, onSelect, metric, setMetric, incomeEnabl
         <button className="btn ghost sm" onClick={() => setTable(!table)}>{table ? <BarChart3 size={15} /> : <Table2 size={15} />}{table ? "Grafik" : "Tablo"}</button>
       </div>
       {income && !incomeEnabled ? (
-        <p className="small muted" style={{ padding: "24px 0" }}>Aylık gelir karşılaştırması için <a href="#/settings">Ayarlar</a>'dan fazla mesai ücretini gir.</p>
+        <p className="small muted" style={{ padding: "24px 0" }}>Aylık gelir karşılaştırması için <a href="#/settings">Ayarlar</a>'dan nöbet ücreti tablonu seç ya da saat ücretini gir.</p>
       ) : table ? (
         <div style={{ overflowX: "auto" }}>
           <table className="data">

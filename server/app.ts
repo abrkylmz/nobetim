@@ -17,6 +17,7 @@ import { createImportService, ServiceError } from "./importService.js";
 import type { AiExtractor } from "./parsing/AiExtractor.js";
 import { FileRejected, isImageKind, MAX_IMAGES_PER_IMPORT, validateFile } from "./security/fileValidation.js";
 import { monthStats } from "./stats.js";
+import { isPayGroupId } from "../shared/payRates.js";
 
 export interface AppOptions {
   /** postgres://… (Neon), pglite:<klasör> (yerel) veya memory: (testler) */
@@ -157,6 +158,7 @@ export async function createApp(opts: AppOptions) {
     const p: Profile = {
       fullName: str(b.fullName, 120), hospital: str(b.hospital, 160), department: str(b.department, 120), staffNo: str(b.staffNo, 40),
       weeklyHours: num(b.weeklyHours, 0, 80, 40), overtimeRate: num(b.overtimeRate, 0, 100_000, 0), holidayRate: num(b.holidayRate, 0, 100_000, 0),
+      payGroup: typeof b.payGroup === "string" && isPayGroupId(b.payGroup) ? b.payGroup : "", payRisky: b.payRisky === true,
     };
     if (p.fullName.split(/\s+/).length < 2) return res.status(400).json({ error: "Ad ve soyadını çizelgede yazdığı gibi gir." });
     await saveProfile(db, uid(req), p);

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { Profile } from "../../../shared/types";
 import { Field, Spinner } from "./ui";
-import { NumberInput } from "./NumberInput";
+import { PaySettings } from "./PaySettings";
 
-export const emptyProfile: Profile = { fullName: "", hospital: "", department: "", staffNo: "", weeklyHours: 40, overtimeRate: 0, holidayRate: 0 };
+export const emptyProfile: Profile = { fullName: "", hospital: "", department: "", staffNo: "", weeklyHours: 40, overtimeRate: 0, holidayRate: 0, payGroup: "", payRisky: false };
 
 export function ProfileForm({ initial, onSubmit, submitLabel, compact }: {
   initial: Profile; onSubmit: (p: Profile) => Promise<void>; submitLabel: string; compact?: boolean;
@@ -24,17 +24,7 @@ export function ProfileForm({ initial, onSubmit, submitLabel, compact }: {
         <input className="input" inputMode="numeric" value={p.staffNo} onChange={(e) => set("staffNo", e.target.value)} />
       </Field>
       {!compact && (
-        <div className="grid grid-3">
-          <Field label="Haftalık çalışma saati" hint="Fazla mesai hesabı için">
-            <NumberInput value={p.weeklyHours} max={80} decimals={1} emptyAs={40} placeholder="40" onChange={(n) => set("weeklyHours", n)} />
-          </Field>
-          <Field label="Fazla mesai ücreti (₺/saat)" hint="Tahmini gelir için">
-            <NumberInput value={p.overtimeRate} max={100000} placeholder="ör. 85,50" onChange={(n) => set("overtimeRate", n)} />
-          </Field>
-          <Field label="Resmî tatil ek ücreti (₺/saat)">
-            <NumberInput value={p.holidayRate} max={100000} placeholder="ör. 40" onChange={(n) => set("holidayRate", n)} />
-          </Field>
-        </div>
+        <PaySettings p={p} set={set} />
       )}
       <div><button className="btn" disabled={busy}>{busy && <Spinner />}{submitLabel}</button></div>
     </form>

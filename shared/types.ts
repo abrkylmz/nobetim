@@ -140,6 +140,10 @@ export interface Profile {
   weeklyHours: number;
   overtimeRate: number; // TL / saat
   holidayRate: number;  // TL / saat (resmî tatil çalışması için ek)
+  /** Hazır nöbet ücreti tarifesi (shared/payRates.ts); boşsa ücretler elle girilir */
+  payGroup: string;
+  /** Riskli birim (acil, yoğun bakım, 112…) — %50 artırımlı sütun */
+  payRisky: boolean;
 }
 
 export interface MonthStats {
@@ -156,7 +160,19 @@ export interface MonthStats {
   normHours: number;
   overtimeHours: number;
   estimatedIncome: number;
+  /** Hazır tarifeyle hesaplandıysa: saat dilimlerine göre dağılım ve ortalama saat ücreti */
+  pay: PayBreakdown | null;
   byCategory: { category: ShiftCategory; count: number; hours: number }[];
 }
 
 export interface Me { id: string; email: string; profile: Profile | null }
+
+export interface PayBreakdown {
+  groupLabel: string;
+  periodLabel: string;
+  risky: boolean;
+  /** Ay içindeki tüm çalışma saatlerinin dilimlere dağılımı (ücretli saatler bu oranla dağıtılır) */
+  buckets: { kind: "day" | "night" | "holiday" | "holidayNight"; hours: number; rate: number }[];
+  /** Fazla mesai saatine uygulanan ağırlıklı ortalama saat ücreti */
+  avgRate: number;
+}

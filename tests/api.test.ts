@@ -333,3 +333,35 @@ describe("Güvenlik ve gizlilik", () => {
     expect((await post(agent, `/api/imports/${detail.id}/reanalyze`)).status).toBe(410);
   });
 });
+
+describe("Nöbet ücreti tarifesi", () => {
+  it("tablodan seçilen ücret gündüz/gece/bayram dilimlerine göre uygulanır", async () => {
+    const a = await app();
+    const agent = await signedIn(a, { fullName: "Ayşe Yılmaz", payGroup: "lisans-kadrolu", payRisky: false, weeklyHours: 40 });
+    expect((await agent.get("/api/me")).body.profile).toMatchObject({ payGroup: "lisans-kadrolu", payRisky: false });
+
+    // Aralık 2026: 16:00–08:00 → 4 sa gündüz + 12 sa gece
+    await post(agent, "/api/shifts", { date: "2026-12-02", category: "night", code: "N", start: "16:00", end: "08:00" }).expect(201);
+    const dec = (await agent.get("/api/stats?year=2026&month=12")).body.month;
+    expect(dec.pay.buckets).toEqual([
+      { kind: "day", hours: 4, rate: 156.35 }, { kind: "night", hours: 12, rate: 171.99 },
+      { kind: "holiday", hours: 0, rate: 195.45 }, { kind: "holidayNight", hours: 0, rate: 215 },
+    ]);
+    expect(dec.pay.avgRate).toBeCloseTo((4 * 156.35 + 12 * 171.99) / 16, 2);
+
+    // Kurban Bayramı 27 Mayıs 2026, 24 saat: 12 sa bayram gündüz + 12 sa bayram gece
+    await post(agent, "/api/shifts", { date: "2026-05-27", category: "24h", code: "24", start: "08:00", end: "08:00" }).expect(201);
+    const may = (await agent.get("/api/stats?year=2026&month=5")).body.month;
+    expect(may.pay.buckets.find((b: any) => b.kind === "holiday").hours).toBe(12);
+    expect(may.pay.buckets.find((b: any) => b.kind === "holidayNight").hours).toBe(12);
+
+    // Riskli birim: %50 artırımlı sütun; geçersiz tarife kimliği kabul edilmez
+    await agent.put("/api/profile").set("X-Nobetim", "1").send({ fullName: "Ayşe Yılmaz", payGroup: "lisans-kadrolu", payRisky: true }).expect(200);
+    const risky = (await agent.get("/api/stats?year=2026&month=12")).body.month;
+    expect(risky.pay.buckets[0].rate).toBe(234.53);
+    expect(risky.pay.buckets[1].rate).toBe(257.98);
+    const bad = await agent.put("/api/profile").set("X-Nobetim", "1").send({ fullName: "Ayşe Yılmaz", payGroup: "uydurma" });
+    expect(bad.body.payGroup).toBe("");
+    expect((await agent.get("/api/stats?year=2026&month=12")).body.month.pay).toBeNull();
+  });
+});

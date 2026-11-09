@@ -24,6 +24,8 @@ const SCHEMA = [
     user_id TEXT PRIMARY KEY, full_name TEXT NOT NULL, hospital TEXT NOT NULL DEFAULT '', department TEXT NOT NULL DEFAULT '',
     staff_no TEXT NOT NULL DEFAULT '', weekly_hours DOUBLE PRECISION NOT NULL DEFAULT 40,
     overtime_rate DOUBLE PRECISION NOT NULL DEFAULT 0, holiday_rate DOUBLE PRECISION NOT NULL DEFAULT 0)`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pay_group TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE profiles ADD COLUMN IF NOT EXISTS pay_risky INTEGER NOT NULL DEFAULT 0`,
   `CREATE TABLE IF NOT EXISTS shift_types (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, code TEXT NOT NULL, label TEXT NOT NULL, category TEXT NOT NULL,
     start_time TEXT, end_time TEXT, color TEXT NOT NULL, verified INTEGER NOT NULL DEFAULT 0, sort INTEGER NOT NULL DEFAULT 0)`,
@@ -93,15 +95,17 @@ export async function getProfile(e: Exec, userId: string): Promise<Profile | nul
   return {
     fullName: r.full_name as string, hospital: r.hospital as string, department: r.department as string, staffNo: r.staff_no as string,
     weeklyHours: Number(r.weekly_hours), overtimeRate: Number(r.overtime_rate), holidayRate: Number(r.holiday_rate),
+    payGroup: (r.pay_group as string) ?? "", payRisky: Number(r.pay_risky) === 1,
   };
 }
 
 export async function saveProfile(e: Exec, userId: string, p: Profile) {
-  await run(e, `INSERT INTO profiles (user_id, full_name, hospital, department, staff_no, weekly_hours, overtime_rate, holiday_rate)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  await run(e, `INSERT INTO profiles (user_id, full_name, hospital, department, staff_no, weekly_hours, overtime_rate, holiday_rate, pay_group, pay_risky)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, hospital = EXCLUDED.hospital, department = EXCLUDED.department,
-      staff_no = EXCLUDED.staff_no, weekly_hours = EXCLUDED.weekly_hours, overtime_rate = EXCLUDED.overtime_rate, holiday_rate = EXCLUDED.holiday_rate`,
-  [userId, p.fullName, p.hospital, p.department, p.staffNo, p.weeklyHours, p.overtimeRate, p.holidayRate]);
+      staff_no = EXCLUDED.staff_no, weekly_hours = EXCLUDED.weekly_hours, overtime_rate = EXCLUDED.overtime_rate, holiday_rate = EXCLUDED.holiday_rate,
+      pay_group = EXCLUDED.pay_group, pay_risky = EXCLUDED.pay_risky`,
+  [userId, p.fullName, p.hospital, p.department, p.staffNo, p.weeklyHours, p.overtimeRate, p.holidayRate, p.payGroup, p.payRisky ? 1 : 0]);
 }
 
 // ---------- vardiya kodları ----------
