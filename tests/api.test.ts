@@ -365,3 +365,59 @@ describe("Nöbet ücreti tarifesi", () => {
     expect((await agent.get("/api/stats?year=2026&month=12")).body.month.pay).toBeNull();
   });
 });
+
+describe("iPhone widget'ı", () => {
+  it("kişiye özel anahtarla yaklaşan nöbeti okur; anahtar yenilenince ve kapatılınca eskisi çalışmaz", async () => {
+    const a = await app();
+    const agent = await signedIn(a);
+    const widget = (token?: string) => {
+      const r = request(a.app).get("/api/widget?tz=-180");
+      return token ? r.set("Authorization", `Bearer ${token}`) : r;
+    };
+    expect((await agent.get("/api/widget-token")).body.active).toBe(false);
+    expect((await widget()).status).toBe(401);
+    expect((await widget("nbw_uydurma")).status).toBe(401);
+
+    // Önümüzdeki günlerde iki nöbet: sıradaki ve sonraki (Türkiye saatine göre)
+    const tr = new Date(Date.now() + 3 * 3600e3);
+    const d = (n: number) => new Date(Date.UTC(tr.getUTCFullYear(), tr.getUTCMonth(), tr.getUTCDate() + n)).toISOString().slice(0, 10);
+    await post(agent, "/api/shifts", { date: d(2), category: "night", code: "N", start: "16:00", end: "08:00" }).expect(201);
+    await post(agent, "/api/shifts", { date: d(4), category: "day", code: "G", start: "08:00", end: "16:00" }).expect(201);
+    await post(agent, "/api/shifts", { date: d(3), category: "leave", code: "İ" }).expect(201);
+
+    const first = (await post(agent, "/api/widget-token").expect(201)).body;
+    expect(first.token).toMatch(/^nbw_/);
+    expect(first.active).toBe(true);
+    // Çerez gerekmez; yalnızca çalışma kayıtları gelir (izin günü gelmez)
+    const body = (await widget(first.token).expect(200)).body;
+    expect(body.current).toBeNull();
+    expect(body.next).toMatchObject({ date: d(2), startAt: `${d(2)}T16:00`, endAt: `${d(3)}T08:00`, hours: 16 });
+    expect(body.upcoming.map((s: any) => s.date)).toEqual([d(4)]);
+    expect(body.next).not.toHaveProperty("note");
+    expect((await agent.get("/api/widget-token")).body.lastUsedAt).toBeTruthy();
+
+    // Anahtar başka kullanıcının verisini göstermez
+    const other = await signedIn(a, { fullName: "Fatma Demir" });
+    const otherToken = (await post(other, "/api/widget-token")).body.token;
+    expect((await widget(otherToken)).body.next).toBeNull();
+
+    // Yenileme eskisini geçersiz kılar
+    const second = (await post(agent, "/api/widget-token")).body.token;
+    expect((await widget(first.token)).status).toBe(401);
+    expect((await widget(second)).status).toBe(200);
+
+    // Kapatma
+    await agent.delete("/api/widget-token").set("X-Nobetim", "1").expect(200);
+    expect((await widget(second)).status).toBe(401);
+    // Yönetim uçları oturum ister
+    expect((await request(a.app).post("/api/widget-token").set("X-Nobetim", "1")).status).toBe(401);
+  });
+
+  it("widget betiği yer tutucuları ve tüm boyutları içerir", () => {
+    const src = fs.readFileSync(path.join(__dirname, "..", "web", "public", "nobetim-widget.js"), "utf8");
+    expect(src).toContain('"__BASE__"');
+    expect(src).toContain('"__TOKEN__"');
+    for (const f of ["small", "medium", "accessoryRectangular", "accessoryInline", "accessoryCircular"]) expect(src).toContain(f);
+    expect(() => new Function("args", "config", `return async () => {${src}}`)).not.toThrow();
+  });
+});

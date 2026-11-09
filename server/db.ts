@@ -45,6 +45,8 @@ const SCHEMA = [
     source TEXT NOT NULL, created_at TEXT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS shifts_user_date ON shifts(user_id, date)`,
   `CREATE TABLE IF NOT EXISTS rate_limits (key TEXT PRIMARY KEY, n INTEGER NOT NULL, reset BIGINT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS widget_tokens (
+    user_id TEXT PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL, last_used_at TEXT)`,
 ];
 
 /**
@@ -281,7 +283,7 @@ export async function updateImport(e: Exec, id: string, patch: Record<string, un
 /** Kullanıcının tüm verisini tek işlemde siler. */
 export async function deleteUserData(db: DB, userId: string) {
   await db.tx(async (t) => {
-    for (const table of ["shifts", "imports", "shift_types", "profiles", "sessions"]) {
+    for (const table of ["shifts", "imports", "shift_types", "profiles", "sessions", "widget_tokens"]) {
       await run(t, `DELETE FROM ${table} WHERE user_id = ?`, [userId]);
     }
     await run(t, "DELETE FROM users WHERE id = ?", [userId]);

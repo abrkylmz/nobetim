@@ -6,6 +6,7 @@ import { useApp, type ThemePref } from "../lib/app";
 import { Alert, Card, Field, Modal, Spinner } from "../components/ui";
 import { ProfileForm } from "../components/ProfileForm";
 import { PalettePicker } from "../components/PalettePicker";
+import { WidgetCard } from "../components/WidgetCard";
 
 export function SettingsPage() {
   const { me, refreshMe, toast, theme, setTheme, palette, setPalette } = useApp();
@@ -28,6 +29,7 @@ export function SettingsPage() {
             ))}
           </div>
         </Card>
+        <WidgetCard />
         <ShiftTypesCard />
         <Card title="Gizlilik ve veriler" icon={<ShieldCheck size={18} />}>
           <ul className="small muted" style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>

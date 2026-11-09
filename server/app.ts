@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { timingSafeEqual } from "node:crypto";
 import { CATEGORY_META, isWork, type Profile, type ShiftCategory, type ShiftType } from "../shared/types.js";
-import { buildInterval, daysInMonth, fromMs, ymd } from "../shared/time.js";
+import { addDays, buildInterval, daysInMonth, fromMs, ymd } from "../shared/time.js";
 import { holidaysOf } from "../shared/holidays.js";
 import {
   deleteShift, deleteUserData, getImport, getProfile, getShift, insertShift, listImports, listShiftTypes, listShifts,
@@ -18,6 +18,7 @@ import type { AiExtractor } from "./parsing/AiExtractor.js";
 import { FileRejected, isImageKind, MAX_IMAGES_PER_IMPORT, validateFile } from "./security/fileValidation.js";
 import { monthStats } from "./stats.js";
 import { isPayGroupId } from "../shared/payRates.js";
+import { createWidgetToken, horizonEnd, revokeWidgetToken, userForWidgetToken, widgetPayload, widgetTokenStatus } from "./widget.js";
 
 export interface AppOptions {
   /** postgres://… (Neon), pglite:<klasör> (yerel) veya memory: (testler) */
@@ -86,6 +87,24 @@ export async function createApp(opts: AppOptions) {
     const auth = req.get("authorization") ?? "";
     if (!opts.cronSecret || !safeEqual(auth, `Bearer ${opts.cronSecret}`)) return res.status(401).json({ error: "Yetkisiz." });
     res.json({ removedFiles: await imports.cleanup() });
+  });
+
+  // iPhone widget'ı (Scriptable): çerez yerine kişiye özel anahtar, yalnızca okuma
+  const widgetLimit = rateLimit(db, 120, 10 * 60_000, (req) => `widget:${req.ip}`);
+  app.get("/api/widget", widgetLimit, async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    const header = req.get("authorization") ?? "";
+    const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+    const userId = token ? await userForWidgetToken(db, token) : null;
+    if (!userId) return res.status(401).json({ error: "Widget bağlantısı geçersiz. Nöbetim > Ayarlar'dan yeni bağlantı oluştur." });
+    const offset = num(req.query.tz, -840, 840, -180);
+    const nowMs = Date.now();
+    const today = fromMs(nowMs - offset * 60_000).slice(0, 10);
+    const y = +today.slice(0, 4), m = +today.slice(5, 7);
+    // Dünden başlayan ve hâlâ süren gece nöbeti de görünsün
+    const shifts = await listShifts(db, userId, addDays(today, -1), horizonEnd(today));
+    const st = monthStats(await monthShifts(userId, y, m), y, m, await getProfile(db, userId));
+    res.json(widgetPayload(shifts, nowMs, offset, { shiftCount: st.shiftCount, workHours: st.workHours }));
   });
 
   // CSRF koruması: durum değiştiren isteklerde özel başlık zorunlu (SameSite=Strict çereze ek olarak)
@@ -364,6 +383,17 @@ export async function createApp(opts: AppOptions) {
       lastImport: recent[0] ?? null,
       pending: recent.filter((i) => i.status === "review" || i.status === "needs_selection" || i.status === "processing").length,
     });
+  });
+
+  // ---------- widget bağlantısı ----------
+  app.get("/api/widget-token", async (req, res) => res.json(await widgetTokenStatus(db, uid(req))));
+  app.post("/api/widget-token", async (req, res) => {
+    const token = await createWidgetToken(db, uid(req));
+    res.status(201).json({ token, ...(await widgetTokenStatus(db, uid(req))) });
+  });
+  app.delete("/api/widget-token", async (req, res) => {
+    await revokeWidgetToken(db, uid(req));
+    res.json({ ok: true });
   });
 
   // ---------- statik arayüz (yalnızca yerel; Vercel'de CDN sunar) ----------

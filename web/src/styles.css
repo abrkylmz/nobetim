@@ -230,6 +230,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .check input { width: 18px; height: 18px; accent-color: var(--primary); flex: none; }
 .pay-box { background: var(--surface-2); border-radius: 14px; padding: 14px; }
 .pay-box table.data { background: transparent; }
+.howto { list-style: none; counter-reset: howto; margin: 0; padding: 0; display: grid; gap: 14px; font-size: 14px; }
+.howto > li { counter-increment: howto; position: relative; padding-left: 36px; line-height: 1.5; }
+.howto > li::before { content: counter(howto); position: absolute; left: 0; top: -1px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--secondary); color: var(--primary); font-weight: 700; font-size: 13px; }
+.howto code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.howto code { background: var(--surface-2); padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+.widget-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; }
 .seg { display: inline-flex; background: var(--surface-2); padding: 3px; border-radius: 12px; gap: 2px; }
 .seg button { border: 0; background: none; padding: 6px 12px; border-radius: 9px; font-weight: 600; font-size: 13px; cursor: pointer; color: var(--text-2); }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }

@@ -52,6 +52,9 @@ export const api = {
   deleteShift: (id: string) => call("DELETE", `/api/shifts/${id}`),
   /** Tarih aralığında başlayan tüm kayıtları siler (ör. ayı temizle) */
   clearShifts: (from: string, to: string) => call<{ removed: number }>("DELETE", `/api/shifts?from=${from}&to=${to}`),
+  widgetStatus: () => call<WidgetStatus>("GET", "/api/widget-token"),
+  createWidgetToken: () => call<WidgetStatus & { token: string }>("POST", "/api/widget-token"),
+  revokeWidgetToken: () => call<{ ok: boolean }>("DELETE", "/api/widget-token"),
   imports: () => call<ImportSummary[]>("GET", "/api/imports"),
   import: (id: string) => call<ReviewDetail>("GET", `/api/imports/${id}`),
   select: (id: string, key: string) => call<ReviewDetail>("POST", `/api/imports/${id}/select`, { key }),
@@ -85,3 +88,4 @@ export const api = {
     });
   },
 };
+export interface WidgetStatus { active: boolean; createdAt: string | null; lastUsedAt: string | null }
