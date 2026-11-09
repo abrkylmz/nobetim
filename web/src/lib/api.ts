@@ -27,7 +27,7 @@ export interface Dashboard {
 }
 export interface StatsResponse {
   month: MonthStats;
-  series: { year: number; month: number; workHours: number; shiftCount: number; overtimeHours: number; nightShifts: number }[];
+  series: { year: number; month: number; workHours: number; shiftCount: number; overtimeHours: number; nightShifts: number; holidayHours: number; estimatedIncome: number }[];
   holidays: Holiday[];
 }
 export interface ShiftBody {

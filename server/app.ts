@@ -338,7 +338,7 @@ export async function createApp(opts: AppOptions) {
     for (let i = 11; i >= 0; i--) {
       const d = new Date(y, m - 1 - i, 1);
       const st = monthStats(all, d.getFullYear(), d.getMonth() + 1, profile);
-      series.push({ year: st.year, month: st.month, workHours: st.workHours, shiftCount: st.shiftCount, overtimeHours: st.overtimeHours, nightShifts: st.nightShifts });
+      series.push({ year: st.year, month: st.month, workHours: st.workHours, shiftCount: st.shiftCount, overtimeHours: st.overtimeHours, nightShifts: st.nightShifts, holidayHours: st.holidayHours, estimatedIncome: st.estimatedIncome });
     }
     res.json({ month: monthStats(all, y, m, profile), series, holidays: holidaysOf(y).filter((h) => +h.date.slice(5, 7) === m) });
   });

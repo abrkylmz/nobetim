@@ -49,6 +49,12 @@ describe("Temel akış: yükle → otomatik çıkar → kontrol → onay → tak
     expect(nov.leaveDays).toBe(1);
     expect(nov.sickDays).toBe(1);
     expect(nov.nightShifts).toBeGreaterThanOrEqual(4);
+
+    // Aylık gelir karşılaştırması: 12 aylık seride her ayın tahmini geliri gelir
+    const series = (await agent.get("/api/stats?year=2026&month=12")).body.series;
+    expect(series).toHaveLength(12);
+    const sNov = series.find((x: any) => x.year === 2026 && x.month === 11);
+    expect(sNov).toMatchObject({ estimatedIncome: nov.estimatedIncome, holidayHours: nov.holidayHours });
   });
 
   it.runIf(hasFont)("metin katmanlı ve çok sayfalı PDF (senaryo 1, 3)", async () => {
